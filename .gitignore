@@ -1,0 +1,13 @@
+# 빌드 산출물 (parts.yaml 에서 load.py 가 생성 → 커밋하지 않음)
+data/pc-data.ttl
+data/catalog.sqlite
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db

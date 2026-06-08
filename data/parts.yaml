@@ -1,0 +1,107 @@
+# AI 쇼핑몰 — 부품 단일 출처 (작업5)
+# 부품 1개 = 1엔트리. iri = 유일 식별자(= resolve localname).
+# onto: 추론이 읽는 스펙/예외 → pc-data.ttl 로.  rdb: 가격/재고/표시 → catalog.sqlite 로.
+# 통제어휘(socket/ramtype/formfactor)는 "같은 개체 공유"로 호환추론 → 문자열 비교 아님.
+
+meta:
+  base: "http://example.org/pc#"
+  # 검증 의도(데이터에 심은 케이스):
+  #  - 멀티플랫폼: AM5 + LGA1700 양쪽에 CPU/MB 존재 (Q3 정답이 여러 세트)
+  #  - 전력 경계 510: gpu_rtx4080 = recWatt450 + margin60 = 510. psu_510w 통과(=), psu_500w 탈락
+  #  - Q4 예외 1건: cpu_i5_14600k <-> mb_b760_ddr4 (소켓 LGA1700 일치하지만 incompatibleWith)
+  #  - powerMargin: 모든 GPU 보유(불변식 ①)
+
+parts:
+  # ---------- CPU (hasSocket) ----------
+  - iri: cpu_ryzen7_7700x
+    onto: { type: CPU, hasSocket: AM5 }
+    rdb:  { display_name: "AMD Ryzen 7 7700X", price_krw: 359000, stock: 12, sku: "CPU-R7-7700X", rating: 4.7 }
+  - iri: cpu_ryzen5_7600
+    onto: { type: CPU, hasSocket: AM5 }
+    rdb:  { display_name: "AMD Ryzen 5 7600", price_krw: 269000, stock: 30, sku: "CPU-R5-7600", rating: 4.6 }
+  - iri: cpu_i7_14700k
+    onto: { type: CPU, hasSocket: LGA1700 }
+    rdb:  { display_name: "Intel Core i7-14700K", price_krw: 489000, stock: 8, sku: "CPU-I7-14700K", rating: 4.7 }
+  - iri: cpu_i5_14600k
+    onto: { type: CPU, hasSocket: LGA1700 }
+    rdb:  { display_name: "Intel Core i5-14600K", price_krw: 339000, stock: 15, sku: "CPU-I5-14600K", rating: 4.6 }
+
+  # ---------- Motherboard (hasSocket / supportsRAMType / hasFormFactor) ----------
+  - iri: mb_b650_atx
+    onto: { type: Motherboard, hasSocket: AM5, supportsRAMType: DDR5, hasFormFactor: ATX }
+    rdb:  { display_name: "B650 ATX 메인보드", price_krw: 289000, stock: 20, sku: "MB-B650-ATX", rating: 4.5 }
+  - iri: mb_x670e_atx
+    onto: { type: Motherboard, hasSocket: AM5, supportsRAMType: DDR5, hasFormFactor: ATX }
+    rdb:  { display_name: "X670E ATX 메인보드", price_krw: 820000, stock: 5, sku: "MB-X670E-ATX", rating: 4.8 }
+  - iri: mb_z790_atx
+    onto: { type: Motherboard, hasSocket: LGA1700, supportsRAMType: DDR5, hasFormFactor: ATX }
+    rdb:  { display_name: "Z790 ATX 메인보드", price_krw: 449000, stock: 10, sku: "MB-Z790-ATX", rating: 4.7 }
+  - iri: mb_b760_matx
+    onto: { type: Motherboard, hasSocket: LGA1700, supportsRAMType: DDR5, hasFormFactor: MicroATX }
+    rdb:  { display_name: "B760 mATX 메인보드", price_krw: 219000, stock: 25, sku: "MB-B760-MATX", rating: 4.4 }
+  - iri: mb_b760_ddr4   # Q4 예외 대상 (cpu_i5_14600k 와 incompatibleWith)
+    onto: { type: Motherboard, hasSocket: LGA1700, supportsRAMType: DDR4, hasFormFactor: ATX }
+    rdb:  { display_name: "B760 DDR4 ATX 메인보드", price_krw: 179000, stock: 18, sku: "MB-B760-DDR4", rating: 4.2 }
+
+  # ---------- GPU (lengthMm / recommendedWattage / powerMargin) ----------
+  - iri: gpu_rtx4090
+    onto: { type: GPU, lengthMm: 336, recommendedWattage: 450, powerMargin: 150 }   # 필요 600
+    rdb:  { display_name: "GeForce RTX 4090", price_krw: 2590000, stock: 3, sku: "GPU-4090", rating: 4.9 }
+  - iri: gpu_rtx4080
+    onto: { type: GPU, lengthMm: 310, recommendedWattage: 450, powerMargin: 60 }    # 필요 510 (경계)
+    rdb:  { display_name: "GeForce RTX 4080", price_krw: 1490000, stock: 6, sku: "GPU-4080", rating: 4.8 }
+  - iri: gpu_rtx4070
+    onto: { type: GPU, lengthMm: 244, recommendedWattage: 200, powerMargin: 110 }   # 필요 310
+    rdb:  { display_name: "GeForce RTX 4070", price_krw: 749000, stock: 14, sku: "GPU-4070", rating: 4.6 }
+  - iri: gpu_rtx4060
+    onto: { type: GPU, lengthMm: 200, recommendedWattage: 115, powerMargin: 85 }    # 필요 200
+    rdb:  { display_name: "GeForce RTX 4060", price_krw: 399000, stock: 40, sku: "GPU-4060", rating: 4.4 }
+
+  # ---------- PSU (wattage) ----------
+  - iri: psu_1000w
+    onto: { type: PSU, wattage: 1000 }
+    rdb:  { display_name: "1000W 80+ Gold 파워", price_krw: 219000, stock: 16, sku: "PSU-1000G", rating: 4.7 }
+  - iri: psu_750w
+    onto: { type: PSU, wattage: 750 }
+    rdb:  { display_name: "750W 80+ Gold 파워", price_krw: 139000, stock: 22, sku: "PSU-750G", rating: 4.6 }
+  - iri: psu_550w
+    onto: { type: PSU, wattage: 550 }
+    rdb:  { display_name: "550W 80+ Bronze 파워", price_krw: 79000, stock: 35, sku: "PSU-550B", rating: 4.3 }
+  - iri: psu_510w
+    onto: { type: PSU, wattage: 510 }   # 4080 경계: 510>=510 통과
+    rdb:  { display_name: "510W 80+ Bronze 파워", price_krw: 72000, stock: 9, sku: "PSU-510B", rating: 4.1 }
+  - iri: psu_500w
+    onto: { type: PSU, wattage: 500 }   # 4080 경계: 500<510 탈락
+    rdb:  { display_name: "500W 80+ Bronze 파워", price_krw: 69000, stock: 28, sku: "PSU-500B", rating: 4.0 }
+
+  # ---------- Case (supportsFormFactor* / maxGpuLengthMm) ----------
+  - iri: case_atx_full
+    onto: { type: Case, supportsFormFactor: [ATX, MicroATX, ITX], maxGpuLengthMm: 400 }
+    rdb:  { display_name: "풀타워 ATX 케이스", price_krw: 159000, stock: 11, sku: "CASE-FULL", rating: 4.6 }
+  - iri: case_atx_mid
+    onto: { type: Case, supportsFormFactor: [ATX, MicroATX, ITX], maxGpuLengthMm: 330 }  # 4090(336) 불가, 4080(310) 가능
+    rdb:  { display_name: "미들타워 ATX 케이스", price_krw: 99000, stock: 26, sku: "CASE-MID", rating: 4.5 }
+  - iri: case_matx
+    onto: { type: Case, supportsFormFactor: [MicroATX, ITX], maxGpuLengthMm: 280 }
+    rdb:  { display_name: "mATX 케이스", price_krw: 69000, stock: 19, sku: "CASE-MATX", rating: 4.2 }
+  - iri: case_itx
+    onto: { type: Case, supportsFormFactor: [ITX], maxGpuLengthMm: 230 }   # 4060(200)만 가능
+    rdb:  { display_name: "ITX 미니 케이스", price_krw: 119000, stock: 7, sku: "CASE-ITX", rating: 4.4 }
+
+  # ---------- RAM (hasRAMType) ----------
+  - iri: ram_ddr5_32
+    onto: { type: RAM, hasRAMType: DDR5 }
+    rdb:  { display_name: "DDR5 32GB (16x2)", price_krw: 149000, stock: 33, sku: "RAM-D5-32", rating: 4.6 }
+  - iri: ram_ddr5_16
+    onto: { type: RAM, hasRAMType: DDR5 }
+    rdb:  { display_name: "DDR5 16GB (8x2)", price_krw: 79000, stock: 41, sku: "RAM-D5-16", rating: 4.5 }
+  - iri: ram_ddr4_32
+    onto: { type: RAM, hasRAMType: DDR4 }
+    rdb:  { display_name: "DDR4 32GB (16x2)", price_krw: 99000, stock: 38, sku: "RAM-D4-32", rating: 4.4 }
+  - iri: ram_ddr4_16
+    onto: { type: RAM, hasRAMType: DDR4 }
+    rdb:  { display_name: "DDR4 16GB (8x2)", price_krw: 49000, stock: 50, sku: "RAM-D4-16", rating: 4.3 }
+
+# 호환 예외(명시적, symmetric). Q4: 소켓 일치에도 불구하고 호환 탈락.
+incompatible:
+  - [cpu_i5_14600k, mb_b760_ddr4]
