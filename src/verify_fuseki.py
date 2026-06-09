@@ -53,10 +53,11 @@ QUERIES = {
         None,
     ),
     "Q4": (
-        "Q4 예외: i5_14600k(LGA1700) ↔ b760_ddr4 socketCompatible 미도출",
+        "Q4: i5_14600k(LGA1700) ↔ b760_ddr4 socketCompatible 도출됨 "
+        "(소켓 물리 일치 — incompatibleWith 예외는 앱 계층에서 처리)",
         f"{PFX} ASK {{ pc:cpu_i5_14600k pc:socketCompatible pc:mb_b760_ddr4 }}",
         None,
-        False,
+        True,
     ),
     "Q4_other": (
         "Q4 비교: i7_14700k(LGA1700) ↔ b760_ddr4 는 도출 (예외 없으므로)",

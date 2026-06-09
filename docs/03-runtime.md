@@ -1,4 +1,4 @@
-# AI 쇼핑몰 — 설계 인계 03: 런타임 (v1.9)
+# AI 쇼핑몰 — 설계 인계 03: 런타임 (v2.2)
 
 ## 런타임 구조 (확정)
 ```
@@ -10,58 +10,65 @@
 - 무거운 논리추론 = 추론기(오프라인 사전추론), 자연어↔구조화질의 = LLM.
 - **LLM에 raw SQL/SPARQL 직접 생성 금지** → 파라미터만 채움.
 
-## 작업2: SPARQL 파라미터 도구 (확정·검증) — `src/tools.py`
+## 작업2: SPARQL 파라미터 도구 (5종 완비) — `src/tools.py`
 
-### 도구 5개 (고정 파라미터화 쿼리)
-| 도구 | 용도 |
-|---|---|
-| resolve_entity | 텍스트 → IRI (유일 출처) |
-| find_compatible | 카테고리쌍 + 앵커 IRI → 호환 목록 |
-| check_compatibility | 두 IRI 간 호환 여부 + 사유 |
-| build_configuration | 앵커 GPU IRI → 완전 견적 세트 |
-| explain_fact | IRI + 도출술어 → 근거(basis_detail) |
+| 도구 | 용도 | 상태 |
+|---|---|---|
+| resolve_entity | 텍스트 → IRI (유일 출처) | ✅ v2.1 정규화 |
+| find_compatible | 카테고리쌍 + 앵커 IRI → 호환 목록 (10쌍) | ✅ v2.1 FILTER NOT EXISTS |
+| check_compatibility | 두 IRI 간 호환 여부 + 사유 (예외 우선) | ✅ v2.1 |
+| build_configuration | 앵커 GPU IRI → 완전 견적 세트 | ✅ v2.2 |
+| explain_fact | (subject, predicate, object) → 도출 근거 | ✅ v2.2 |
 
-- v1.9 실재: tools.py 신규 작성, **5도구 중 2도구(resolve_entity·find_compatible)만 슬라이스 구현**. 나머지 3(check_compatibility·build_configuration·explain_fact) 미구현. find_compatible은 (cpu→motherboard) 정방향만(socketCompatible). 역방향·타 카테고리쌍 미구현.
+### resolve_entity — v2.1 정규화
+- needle·IRI 양쪽을 `REPLACE(…, "[^a-z0-9]", "")` 후 CONTAINS 비교. `i5-14600K`/`cpu_i5_14600k` → `i514600k` 매칭.
+- ⚠️ **한글 needle gap (v2.2 기록, 미수정)**: 한글만 있는 needle은 `[^a-z0-9]` 제거 후 `""` → `CONTAINS(x, "")`는 항상 참 → 카테고리 내 임의 항목이 `LIMIT 1`로 집힘. "미들타워/풀타워" 무성 오답 표면. 후보 fix: (a) 빈 needle 거부, (b) RDB 표시명 검색 폴백. → 한글 표시명 전반 문제이지 mid/full 한정 아님.
+
+### find_compatible — v2.1 FILTER NOT EXISTS
+- 모든 쿼리에 양방향 incompatibleWith 필터 (추천 도구이므로 예외 제외).
+
+### build_configuration — v2.2
+- 입력: `anchor_iri` (GPU). 출력: `{configurations:[{mb,case,cpu_options,ram_options}], psu_options, basis, pair_count}`.
+- 구조 조인(case/mb/cpu/ram) + cpu↔mb incompatibleWith 필터. **PSU는 별도 쿼리**(inner-join 붕괴 방지: "PSU 0개"가 "구성 0개"로 오인되지 않게).
+- cpu/ram은 (mb,case) 쌍별로 묶음(MB 종속 — 합집합으로 펴면 잘못된 조합 제시 위험). psu만 플랫(GPU 종속).
+
+### explain_fact — v2.2
+- 입력: `(subject_iri, predicate, object_iri)` 3개 전부 (object 자동도출 안 함). predicate ∈ 5도출술어 + incompatibleWith 닫힌 enum.
+- 출력: `{holds, premises, basis_detail}`. 두 IRI `_validate_iri`, 미지 predicate → error.
+- 패턴: 공유개체형(socket/ram/formfactor) → 양쪽 소스속성 / 수치형(power/gpufit) → 소스 수치 + 부등식. premises에 raw 수치 보존 → LLM이 구체 숫자 인용.
+- **책임 경계**: explain_fact = 단일 사실 근거. check_compatibility = 종합 판정 with 예외 우선. explain은 예외를 끌어오지 않음(겹침 방지).
 
 ### 불변 규칙
-- 모든 가변값은 `initBindings`(바인딩)로만 주입 → 쿼리 텍스트에 LLM 입력 0.
-- **IRI 유일 출처 = resolve_entity**. 나머지 도구는 미지 IRI 거부 (환각 차단).
-- `relation`은 LLM 비노출 → (anchor, target) 카테고리쌍에서 앱이 자동 도출 (정/역 방향 포함).
-- `category`는 6종 닫힌 enum. 위반 즉시 거부.
+- 모든 가변값은 whitelist 검증 후 인라인 주입 (initBindings object 위치 미전파 이슈).
+- **IRI 유일 출처 = resolve_entity**. 나머지 도구는 세션 미등록 IRI 거부.
+- `relation`/`predicate`는 카테고리쌍 자동도출 또는 닫힌 enum. `category`는 6종 닫힌 enum.
 
-## 작업3: RDB vs 온톨로지 경계 (확정·v1.9 실재화) — `src/rdb_boundary.py`
+## 작업3: RDB vs 온톨로지 경계 — `src/rdb_boundary.py`
+(변경 없음 — v1.9 참조. `resolve_display_names(iris)` IRI→표시명 룩업.)
 
-### 판정 규칙
-| 저장소 | 데이터 | 변경 시 |
-|---|---|---|
-| 온톨로지 (Fuseki) | 추론용 스펙·도출술어·예외·IRI/타입 | 재추론 필요 |
-| RDB (sqlite → Postgres) | 가격·재고·SKU·표시명·이미지·평점 | 재추론 불필요 |
+## 작업4: 에이전트 루프 — `src/agent_loop.py`
 
-- **다리 = IRI 하나.** 온톨로지 질의 → IRI → 앱이 RDB 조회.
-- 흐름: 온톨로지 우선(하드제약) → RDB 후필터(가격/재고).
-- SQL도 LLM 비노출 (고정 SQL + 바인딩, IN 자리수만 구조적).
-- 운영 이식: sqlite → Postgres 등 교체해도 쿼리 동일.
-- 검증: "80만원대 보드" 후필터 동작 + **가격만 변경 시 재머티리얼라이즈 0회** 실증 ✅
-- **v1.9 실재화**: `resolve_display_names(iris) -> {iri: display_name}` 구현. PC 접두어 자동 절단 후 `catalog.iri`(localname) IN 매칭. 미스 시 IRI 원본을 그대로 값으로(LLM 종합 단계의 안전성). `CATALOG_DB` env로 경로 외부화 (`/code/catalog.sqlite` ← ConfigMap 동봉).
-
-## 작업4: 에이전트 루프 (확정·검증) — `src/agent_loop.py`
-
-### 루프
-```
-NL → [LLM 의도해석] → [앱: resolve → 도구 실행] → [LLM 종합/설명]
-```
-
-### 불변식 4개
+### 루프 / 불변식 4개
 1. 세션에 surface된 IRI만 통과 (날조 거부 → 자기교정)
 2. raw 쿼리 도구 부재
 3. 도구는 결정적, 비결정성은 의도해석/종합에만
-4. 최대 호출 깊이 상한
+4. 최대 호출 깊이 상한 (MAX_DEPTH=8)
 
-### 기타
-- 종합은 `basis` / `basis_detail`만 사용 → 근거기반·추적가능(Q5).
-- 세션 상태 운반: 후속질문(Q5)이 직전 견적의 IRI 참조.
-- **vLLM tool calling 미지원 시 fallback**: LLM이 `{intent, params}` JSON 방출 → 앱이 도구 매핑. 루프 모양 동일, transport만 교체.
-  - v1.9 실측: tool-calling이 **실루프에서 종단 동작**(parser=qwen3_coder). NL→resolve 툴콜→surface→find 툴콜→종합까지 LLM이 스스로 연쇄. `</think>` 미등장(reasoning-parser qwen3 분리 작동). ⇒ fallback 영구 불필요(코드는 안전망 보존). agent_loop.py 신규 작성(스텁 제거, GB10 실호출).
-- **표시명 후처리 (v1.9)**: `_enrich(tool_result)` — `results: [IRI]`를 `resolve_display_names`로 치환해 LLM에 전달. `basis` 등 다른 필드 보존. resolve_entity 결과는 원형 보존(단일 IRI는 자기교정 흐름에 사용). SYSTEM 프롬프트가 (a) 응답 첫 문장에 basis 명시, (b) results 항목을 표시명으로 그대로 사용, (c) 원시 IRI 비노출을 강제.
-- **배포 형상 (v1.9)**: `k8s/agent-deploy.yaml` = Deployment(`python:3.12-slim`, `sleep infinity`) + initContainer(`pip install --target=/deps`) + ConfigMap `agent-code`(src 3종 + requirements.txt + catalog.sqlite 동봉). Secret `vllm-api-key/key` → env `VLLM_API_KEY` 주입. 코드/데이터 갱신 루프: `kubectl create cm … --dry-run=client -o yaml | kubectl apply -f -; kubectl rollout restart deploy/agent`.
-- 검증: Q1~Q5 + 자기교정(날조 IRI 거부 → resolve 재시도 → "카탈로그 없음") 통과 ✅. Q1 표시명+basis 라이브 통과 ✅ (v1.9).
+### 종합 규칙 (SYSTEM 프롬프트)
+- find_compatible: 첫 문장에 basis(호환 술어) 명시.
+- check_compatibility: basis_detail 인용 / compatible·explicitly_incompatible 분기.
+- build_configuration: 5규칙 basis 명시 / pair_count 조합 + CPU·RAM·PSU 표시명 / configurations·psu_options 빈 경우 구분.
+- explain_fact: premises의 구체 수치를 응답에 인용 (술어이름=사유 원칙의 마지막 한 겹).
+
+### `<think>` strip (v2.2)
+- `_strip_think()` 를 루프 종합 직전 적용. reasoning-parser(qwen3)가 분리 못하고 content로 샌 케이스 방어. 완전블록 + open소실/close잔존 둘 다 처리. (v1.9 "분리 작동" 관찰이 이 경로에선 content 누수로 나타남.)
+
+### _enrich
+- find_compatible 결과: `results` IRI → 표시명. resolve_entity 결과는 원형 보존(자기교정).
+- build_configuration 결과: `_enrich_build` — configurations 중첩 IRI + psu_options 일괄 치환.
+
+## 배포 형상 (v2.2 갱신)
+- `k8s/agent-deploy.yaml` = Deployment(`python:3.12-slim`, `sleep infinity`) + initContainer(`pip install --target=/deps`) + ConfigMap `agent-code`(src + requirements.txt + catalog.sqlite) + Secret `vllm-api-key`→env `VLLM_API_KEY`.
+- **코드/데이터 갱신**: `kubectl create cm agent-code --from-file=… --dry-run=client -o yaml | kubectl apply -f -` **만**.
+  - ⚠️ **`rollout restart` 불필요** (v2.2 정정): ConfigMap 볼륨 마운트 자동 갱신 + per-`exec` 실행 모델 → 다음 `exec`가 새 코드 픽업. restart는 **initContainer(pip 의존성) 변경 시에만**. 불필요한 restart는 CoreDNS-trap 리스크만 추가.
+- 검증: `verify_q3.py`(Q3 건전성), `verify_fuseki.py`(Q1~Q5 라이브), agent_loop 직접 exec.

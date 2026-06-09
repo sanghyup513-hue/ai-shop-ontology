@@ -1,18 +1,19 @@
 # pc-compat.rules — AI 쇼핑몰 호환 5규칙 (Jena GenericRuleReasoner)
 # 패턴1(공유 개체 조인): socketCompatible / ramCompatible / boardFitsCase
 # 패턴2(수치 빌트인): powerSufficient (sum+ge) / gpuFitsCase (le)
-# noValue : Q4 예외(incompatibleWith) — hybridMode 필수
+# Q4 예외(incompatibleWith): 소켓은 물리적으로 일치하므로 socketCompatible 은 도출됨.
+#   예외 적용은 앱 계층(check_compatibility=예외 우선, find_compatible=incompatibleWith 필터)에서 수행.
 
 @prefix pc:  <http://example.org/pc#> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 
-# ── 규칙1: 소켓 호환 (CPU ↔ Motherboard, incompatibleWith 예외 제외) ──────────
+# ── 규칙1: 소켓 호환 (CPU ↔ Motherboard, 소켓 물리 일치만 판정) ───────────────
+#   incompatibleWith 예외는 더 이상 여기서 거르지 않음 — 앱 계층으로 이관.
 [socketCompatible:
   (?cpu  rdf:type pc:CPU)
   (?cpu  pc:hasSocket ?sock)
   (?mb   rdf:type pc:Motherboard)
   (?mb   pc:hasSocket ?sock)
-  noValue(?cpu pc:incompatibleWith ?mb)
   -> (?cpu pc:socketCompatible ?mb)
 ]
 
