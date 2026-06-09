@@ -1,0 +1,32 @@
+# fuseki-assembler.ttl — Jena Fuseki 5.1.0 assembler 설정
+# 구조: 인메모리 베이스 모델(pc-data.ttl 적재) → GenericRuleReasoner(pc-compat.rules) → InfModel → Dataset → Service
+
+@prefix :       <#> .
+@prefix fuseki: <http://jena.apache.org/fuseki#> .
+@prefix rdf:    <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix ja:     <http://jena.hpl.hp.com/2005/11/Assembler#> .
+
+# ── Fuseki 서비스 (엔드포인트: /pc/sparql, /pc/query) ─────────────────────────
+:service_pc rdf:type fuseki:Service ;
+  fuseki:name "pc" ;
+  fuseki:endpoint [ fuseki:operation fuseki:query  ; fuseki:name "sparql" ] ;
+  fuseki:endpoint [ fuseki:operation fuseki:query  ; fuseki:name "query"  ] ;
+  fuseki:endpoint [ fuseki:operation fuseki:update ; fuseki:name "update" ] ;
+  fuseki:dataset :dataset .
+
+# ── Dataset (기본 그래프 = InfModel) ─────────────────────────────────────────
+:dataset rdf:type ja:RDFDataset ;
+  ja:defaultGraph :infModel .
+
+# ── InfModel = 베이스 모델 + GenericRuleReasoner ──────────────────────────────
+# noValue(부정예외, Q4) + sum/ge/le(수치, Q2/Q5) 모두 작동하는 HYBRID가 기본값
+:infModel rdf:type ja:InfModel ;
+  ja:baseModel :baseModel ;
+  ja:reasoner [
+    ja:reasonerURL <http://jena.hpl.hp.com/2003/GenericRuleReasoner> ;
+    ja:rulesFrom   <file:///fuseki-config/pc-compat.rules>
+  ] .
+
+# ── 인메모리 베이스 모델 (pc-data.ttl 적재) ──────────────────────────────────
+:baseModel rdf:type ja:MemoryModel ;
+  ja:content [ ja:externalContent <file:///fuseki-config/pc-data.ttl> ] .

@@ -1,4 +1,4 @@
-# AI 쇼핑몰 — 설계 인계 01: 인프라 (v1.7)
+# AI 쇼핑몰 — 설계 인계 01: 인프라 (v1.8)
 
 ## 호스트
 - 노트북: i7-1360P (P코어 4 + E코어 8 = 12코어/16스레드) / 32GB RAM / SSD / Windows + VirtualBox
@@ -40,6 +40,16 @@
 ### Trade-off (인지)
 - 단일 노드라 노드 분산/스케줄링/HA 검증 불가 → 검증 범위 밖 (목적: 온톨로지+LLM 운영성)
 - 실서버 이식 시 멀티노드 확장, 매니페스트·GB10 연동 그대로 이식
+
+## Fuseki (클러스터 내, 라이브 추론) — 실측 통과 ✅ (v1.8)
+- 이미지: `stain/jena-fuseki` (Fuseki 5.1.0, JVM 21). `apache/jena-fuseki:*` Docker Hub 풀은 현 시점 `insufficient_scope` 실패 → `stain/jena-fuseki` 채택.
+- 시작: `fuseki-server --config=/fuseki-config/fuseki-assembler.ttl`
+- 어셈블러 구조: `ja:InfModel`(베이스 모델 + GenericRuleReasoner) → `ja:RDFDataset` → `fuseki:Service`. 베이스는 `ja:MemoryModel`로 인메모리, `pc-data.ttl`을 `ja:externalContent`로 적재.
+- 규칙 모드: GenericRuleReasoner **기본값(hybrid)** 에서 noValue·sum·ge·le 4종 빌트인 모두 발화 확인. 별도 `ja:rulesetMode` 설정 불필요.
+- 매니페스트: `k8s/fuseki-deploy.yaml` (Deployment 1 + NodePort Service 30030) + ConfigMap `fuseki-config` (assembler·rules·data 3파일).
+- 리소스: requests 512Mi/500m, limits 2Gi/2cpu. 26부품 기준 충분(JVM 힙 1.5G 설정).
+- 접근: `http://192.168.56.10:30030/pc/sparql` (외부) — 클러스터 내부에서는 `http://fuseki-svc.default:3030/pc/sparql`.
+- 검증 산출물: `src/verify_fuseki.py` (Q1~Q5 + 타이밍). 상세 04-experiment.
 
 ## GB10 (vLLM 전용, 클러스터 외부) — 도달 확인 ✅
 - k8s 노드로 넣지 않음 → **외부 추론 엔드포인트**로 취급

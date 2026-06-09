@@ -1,0 +1,57 @@
+# pc-compat.rules — AI 쇼핑몰 호환 5규칙 (Jena GenericRuleReasoner)
+# 패턴1(공유 개체 조인): socketCompatible / ramCompatible / boardFitsCase
+# 패턴2(수치 빌트인): powerSufficient (sum+ge) / gpuFitsCase (le)
+# noValue : Q4 예외(incompatibleWith) — hybridMode 필수
+
+@prefix pc:  <http://example.org/pc#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+# ── 규칙1: 소켓 호환 (CPU ↔ Motherboard, incompatibleWith 예외 제외) ──────────
+[socketCompatible:
+  (?cpu  rdf:type pc:CPU)
+  (?cpu  pc:hasSocket ?sock)
+  (?mb   rdf:type pc:Motherboard)
+  (?mb   pc:hasSocket ?sock)
+  noValue(?cpu pc:incompatibleWith ?mb)
+  -> (?cpu pc:socketCompatible ?mb)
+]
+
+# ── 규칙2: RAM 호환 (RAM ↔ Motherboard, 공유 RAMType 개체) ────────────────────
+[ramCompatible:
+  (?ram  rdf:type pc:RAM)
+  (?ram  pc:hasRAMType ?rtype)
+  (?mb   rdf:type pc:Motherboard)
+  (?mb   pc:supportsRAMType ?rtype)
+  -> (?ram pc:ramCompatible ?mb)
+]
+
+# ── 규칙3: 보드 케이스 적합 (Motherboard ↔ Case, 공유 FormFactor 개체) ────────
+[boardFitsCase:
+  (?mb   rdf:type pc:Motherboard)
+  (?mb   pc:hasFormFactor ?ff)
+  (?case rdf:type pc:Case)
+  (?case pc:supportsFormFactor ?ff)
+  -> (?mb pc:boardFitsCase ?case)
+]
+
+# ── 규칙4: 전력 충분 (PSU → GPU, wattage >= recWatt + powerMargin) ────────────
+[powerSufficient:
+  (?gpu  rdf:type pc:GPU)
+  (?gpu  pc:recommendedWattage ?recW)
+  (?gpu  pc:powerMargin ?margin)
+  sum(?recW, ?margin, ?required)
+  (?psu  rdf:type pc:PSU)
+  (?psu  pc:wattage ?watts)
+  ge(?watts, ?required)
+  -> (?psu pc:powerSufficient ?gpu)
+]
+
+# ── 규칙5: GPU 케이스 적합 (GPU → Case, lengthMm <= maxGpuLengthMm) ───────────
+[gpuFitsCase:
+  (?gpu  rdf:type pc:GPU)
+  (?gpu  pc:lengthMm ?gpuLen)
+  (?case rdf:type pc:Case)
+  (?case pc:maxGpuLengthMm ?maxLen)
+  le(?gpuLen, ?maxLen)
+  -> (?gpu pc:gpuFitsCase ?case)
+]

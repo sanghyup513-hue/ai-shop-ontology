@@ -1,7 +1,7 @@
-# AI 쇼핑몰 — 설계 인계 00: 개요 (v1.7)
+# AI 쇼핑몰 — 설계 인계 00: 개요 (v1.8)
 
 > **새 세션 시작 시 이 파일은 항상 지참. 그 세션에서 다룰 파일만 추가로 지참.**
-> 변경 이력: v1.4(OWL RL·Jena Fuseki 확정) → v1.5(작업1~4 설계+코드 검증) → v1.6(작업5 완료·문서 5분할·GitHub 저장소 개설) → v1.7(전제2·3 실측 통과: GB10 tool-calling 동작·도달 확인, k8s 단일노드 클러스터 실제 기동)
+> 변경 이력: v1.4(OWL RL·Jena Fuseki 확정) → v1.5(작업1~4 설계+코드 검증) → v1.6(작업5 완료·문서 5분할·GitHub 저장소 개설) → v1.7(전제2·3 실측 통과: GB10 tool-calling 동작·도달 확인, k8s 단일노드 클러스터 실제 기동) → v1.8(**전제1 Fuseki 실측 통과**: 클러스터 파드에서 5규칙 라이브 발화 + Q1~Q5 정합 + 타이밍 cold 150ms / warm 39ms)
 
 ## 목표
 아마존 Rufus 스타일 대화형 AI 쇼핑몰. 자연어 요청 → LLM 의도해석 → 온톨로지/데이터 질의 → 자연어 추천. 기능 하드코딩 대신 데이터 + 온톨로지 + LLM.
@@ -25,22 +25,23 @@
 docs/        이 문서들
 ontology/    pc-schema.ttl · pc-compat.rules  (v1.5 산출물, 직접 투입)
 data/        parts.yaml (단일 출처)  ← pc-data.ttl · catalog.sqlite 는 빌드 산출물(gitignore)
-src/         load.py · verify_task5.py · validate.py · tools.py · rdb_boundary.py · agent_loop.py · probe_toolcalling.py(v1.7)
+src/         load.py · verify_task5.py · validate.py · tools.py · rdb_boundary.py · agent_loop.py · probe_toolcalling.py(v1.7) · verify_fuseki.py(v1.8)
 infra/vagrant/  Vagrantfile · provision/01-common.sh · provision/02-init.sh  (v1.7, k8s 단일노드)
+k8s/            fuseki-assembler.ttl · fuseki-deploy.yaml  (v1.8, 라이브 추론 적재)
 ```
 
-## 작업 우선순위 (v1.6 기준)
+## 작업 우선순위 (v1.8 기준)
 1. ~~온톨로지 스키마~~ ✅  2. ~~SPARQL 도구 인터페이스~~ ✅  3. ~~RDB 경계~~ ✅
 4. ~~에이전트 루프~~ ✅    5. ~~데이터 출처/적재~~ ✅
 
 **운영 전제 3종 검증 (실제 환경):**
-- [ ] **전제1 Fuseki 실측** (추론지연·재추론시간·SPARQL 응답속도) — **미완, 다음 작업**
+- [x] **전제1 Fuseki 실측** ✅ 통과. Jena 5.1.0 + GenericRuleReasoner(hybrid 기본). 클러스터 파드에서 5규칙 라이브 발화·Q1~Q5 드라이런 결과와 일치·noValue/sum/ge/le 빌트인 4종 작동. 타이밍: cold 150ms / warm 39ms / 추론비용 110ms (26부품 규모). (상세 04)
 - [x] **전제2 Qwen tool-calling** ✅ 실측통과. parser=`qwen3_coder`, reasoning-parser=`qwen3`. Stage1(구조)·Stage2(루프-정합) 둘 다 PASS. fallback 불필요. (상세 01·04)
 - [x] **전제3 GB10 도달** ✅ 통과. tailnet 경유로 VM→GB10 `/v1/models` 응답·tool-call 왕복 확인. **남은 것: vllm-svc Service 등록**(ExternalName, 설계완료·실행만). (상세 01)
 
 **부수 성과:** k8s 단일노드 클러스터를 실제로 기동 완료(VM1, Calico Ready). 기동 중 드러난 호스트 의존 이슈(vCPU·타이머·kubeadm 타임아웃)는 01-infra에 기록.
 
-→ 전제1까지 통과 후: 클러스터 배포. 세션 지참 파일 = 00-overview + 01-infra + 04-experiment.
+→ 전제 3종 모두 통과. 다음: **전제3 마무리(vllm-svc 등록) + 한 바퀴 통합(LLM→SPARQL→추론조회→자연어).** 세션 지참 파일 = 00-overview + 01-infra + 04-experiment.
 
 ## 에이전트 자율성 경계
 핵심: "무엇을 만들지"는 사람, "어떻게 작동시킬지"는 에이전트 자율 반복.

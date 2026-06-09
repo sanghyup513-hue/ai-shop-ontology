@@ -1,0 +1,66 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fuseki
+  namespace: default
+  labels:
+    app: fuseki
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fuseki
+  template:
+    metadata:
+      labels:
+        app: fuseki
+    spec:
+      containers:
+      - name: fuseki
+        image: stain/jena-fuseki
+        args:
+        - /jena-fuseki/fuseki-server
+        - --config=/fuseki-config/fuseki-assembler.ttl
+        env:
+        - name: ADMIN_PASSWORD
+          value: "admin"
+        - name: JAVA_OPTIONS
+          value: "-Xmx1500m"
+        ports:
+        - containerPort: 3030
+        volumeMounts:
+        - name: fuseki-config
+          mountPath: /fuseki-config
+          readOnly: true
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2"
+        readinessProbe:
+          httpGet:
+            path: /$/ping
+            port: 3030
+          initialDelaySeconds: 15
+          periodSeconds: 5
+      volumes:
+      - name: fuseki-config
+        configMap:
+          name: fuseki-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fuseki-svc
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: fuseki
+  ports:
+  - port: 3030
+    targetPort: 3030
+    nodePort: 30030
