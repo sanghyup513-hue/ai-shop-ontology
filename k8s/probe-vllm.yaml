@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vllm-probe
+  namespace: default
+spec:
+  restartPolicy: Never
+  containers:
+    - name: p
+      image: curlimages/curl
+      command: ["sh", "-c"]
+      args:
+        - 'curl -sS -H "Authorization: Bearer $KEY" -o - -w "\nHTTP=%{http_code}\n" http://vllm-svc:8000/v1/models | head -c 600'
+      env:
+        - name: KEY
+          valueFrom:
+            secretKeyRef:
+              name: vllm-api-key
+              key: key

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Fuseki 라이브 추론 검증 Q1~Q5 + cold/warm 타이밍 실측."""
-import sys, time, json, urllib.request, urllib.parse
+import os, sys, time, json, urllib.request, urllib.parse
 
-ENDPOINT = "http://192.168.56.10:30030/pc/sparql"
+ENDPOINT = os.environ.get("FUSEKI_SPARQL", "http://fuseki-svc:3030/pc/sparql")
 PFX = "PREFIX pc: <http://example.org/pc#>"
 
 
@@ -35,10 +35,10 @@ QUERIES = {
         {"mb_b650_atx", "mb_x670e_atx"},
     ),
     "Q2_pass": (
-        "powerSufficient: PSU→4080 (기대: 1000/750/510 통과)",
+        "powerSufficient: PSU→4080 (기대: 1000/750/550/510 통과)",
         f"{PFX} SELECT ?psu WHERE {{ ?psu pc:powerSufficient pc:gpu_rtx4080 }} ORDER BY ?psu",
         ["psu"],
-        {"psu_1000w", "psu_750w", "psu_510w"},
+        {"psu_1000w", "psu_750w", "psu_550w", "psu_510w"},
     ),
     "Q2_fail": (
         "powerSufficient: psu_500w 4080 통과 여부 (기대: 0건=탈락)",

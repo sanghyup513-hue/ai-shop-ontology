@@ -1,8 +1,10 @@
-# AI 쇼핑몰 — 설계 인계 04: 실험·검증 (v1.8)
+# AI 쇼핑몰 — 설계 인계 04: 실험·검증 (v1.9)
 
 > ⚠️ v1.5/1.6 시점의 코드 검증은 rdflib **드라이런** (룰엔진/RDB를 동등 코드로 대체).
 > v1.7: Qwen tool-calling·GB10 도달 실측 통과.
 > **v1.8: 전제1 Fuseki도 실측 통과** — 5규칙 라이브 발화·Q1~Q5 결과 드라이런과 일치. 드라이런 자체는 이력으로 보존(설계 의도는 드라이런으로 굳혀졌고, 실측이 이를 확인). **남은 미실측: 전제3 마무리(vllm-svc) + 한 바퀴 통합.**
+> **v1.9: 통합 한 바퀴 Q1 경로 실인프라 완주** — NL→LLM→resolve→find_compatible→자연어, 파드 안에서 Fuseki(인클러스터)+GB10(외부) 동시 왕복.
+> **v1.9 증분**: agent Deployment 실가동(ConfigMap+initContainer+Secret) / rdb_boundary 실재화 + `_enrich` 후처리 → Q1 표시명+basis 통과. **남은 미실측: Q2~Q5 자연어 확장, 호환관계 확장(`(gpu,motherboard)` 등).**
 
 ## 산출물
 
@@ -31,6 +33,15 @@
 | fuseki-assembler.ttl | k8s/ | InfModel(베이스+규칙) → Dataset → Service 어셈블러. 베이스=인메모리 + `pc-data.ttl` ja:externalContent |
 | fuseki-deploy.yaml | k8s/ | Deployment(`stain/jena-fuseki` 5.1.0) + NodePort Service(30030). ConfigMap `fuseki-config` 마운트 |
 | verify_fuseki.py | src/ | Q1~Q5 라이브 SPARQL 검증 + cold/warm 타이밍 측정 스크립트 |
+
+### v1.9 산출물 (통합 한 바퀴, 저장소 커밋)
+| 파일 | 위치 | 내용 |
+|---|---|---|
+| vllm-svc.yaml | k8s/ | 셀렉터없는 Service(headless) + 수동 Endpoints(GB10 raw tailnet IP). ExternalName 폐기 |
+| tools.py | src/ | 신규. resolve_entity·find_compatible 2도구(5중 2 슬라이스). initBindings+화이트리스트 인라인 |
+| agent_loop.py | src/ | 신규. GB10 실호출 루프(qwen3_coder). 불변식1·MAX_DEPTH=8·relation비노출. `_enrich` 표시명 후처리(v1.9 증분). env명 `VLLM_API_KEY`로 통일 |
+| rdb_boundary.py | src/ | 신규(v1.9 증분). `resolve_display_names(iris)` — PC 접두어 절단 후 `catalog.iri` IN 매칭. 미스는 IRI 원본 fallback |
+| agent-deploy.yaml | k8s/ | 신규(v1.9 증분). Deployment(`python:3.12-slim`, sleep) + initContainer(pip→/deps) + ConfigMap `agent-code`(src 3종 + requirements + catalog.sqlite) + Secret `vllm-api-key` env 주입 |
 
 ## 작업5: 데이터 출처·적재 ✅ (v1.6 완료)
 
@@ -73,7 +84,7 @@
 |---|---|---|---|
 | 1 | Fuseki 실측치 (추론지연·재추론시간·SPARQL 응답속도) | ✅ **실측통과** | Jena 5.1.0 + GenericRuleReasoner(hybrid 기본 모드, noValue/sum/ge/le 작동). 클러스터 파드 라이브 추론. **cold 150ms / warm 39ms / 추론비용 110ms** (26부품/81트리플/5규칙). 5규칙 전부 발화 + Q1~Q5 드라이런 결과와 일치 |
 | 2 | vLLM tool calling 동작 + `--tool-call-parser` 값 | ✅ **실측통과** | parser=`qwen3_coder`, reasoning-parser=`qwen3`. probe Stage1·2 PASS. fallback 불필요(코드는 보존) |
-| 3 | 클러스터 → GB10 연결 | ◐ **도달 확인, Service 등록만 남음** | tailnet 경유 `/v1/models`·tool-call 왕복 OK. vllm-svc ExternalName 등록 실행만 |
+| 3 | 클러스터 → GB10 연결·등록 | ✅ **완료** | vllm-svc 수동Endpoints 등록, 임시파드→/v1/models 응답. 파드 egress→tailnet 라우팅 실증 |
 
 ### 전제1 실측 산출물 (v1.8)
 - `ontology/pc-compat.rules` — 5규칙 Jena 룰 코드화 (sum/ge/le는 쉼표 인자 형식 `sum(?a, ?b, ?c)`). hybrid 기본 모드에서 noValue·sum·ge·le 모두 정상.
@@ -94,11 +105,26 @@
 - VM(클러스터)에 tailscale 설치 → GB10(`100.82.135.124`) 직통. 브리지 불필요.
 - 다음: `vllm-svc`(ExternalName 또는 고정 Endpoints) 등록 → 앱이 `vllm-svc`로 호출(이식성).
 
+### 전제3 + 통합 결과 (v1.9)
+- vllm-svc: 헤드리스 Service + 수동 Endpoints(100.82.135.124:8000). 파드 curl→Qwen/Qwen3.6-35B-A3B 응답. EndpointSlice 자동 미러.
+- 통합 한 바퀴(Q1만): "7700X에 맞는 메인보드" → resolve_entity(cpu)→ cpu_ryzen7_7700x surface→ find_compatible(motherboard)→ socketCompatible 2건(b650·x670e)→ basis 인용 종합. Q1 cold 58ms/warm 26ms(ClusterIP경유, v1.8 베이스라인과 차이 없음).
+- **v1.9 증분 (표시명+basis 슬라이스)**: agent Deployment 실가동 (`k8s/agent-deploy.yaml`) → `kubectl exec deploy/agent -- python agent_loop.py "7700X 메인보드"` 라이브 실행 결과:
+  - 도구결과 `results`가 `["B650 ATX 메인보드","X670E ATX 메인보드"]` (IRI 미노출) ← `_enrich` + `resolve_display_names`
+  - 종합문 첫 문장 "Ryzen 7 7700X**과 소켓 호환(socketCompatible)이 되는** 메인보드…" ← SYSTEM 강화로 basis 명시 강제
+  - 두 검증 기준(표시명·basis) 통과 ✅
+- 한계: **Q2~Q5 자연어 미확장**(tool 2종만), `(gpu,motherboard)` 등 호환관계 매핑 부재, validate.py·probe_toolcalling.py 부재.
+
+### 테스트 brittleness (v1.9 발견, 미수정)
+- verify_fuseki의 expected가 **SoT(parts.yaml)에서 파생되지 않은 손-리터럴** → 데이터 확장 시 드리프트. 이번에 parts.yaml에 psu_550w 정식 등재(단일출처 정상)됐으나 Q2_pass expected가 못 따라가 FAIL→expected에 psu_550w 수동 추가로 해소.
+- `==`(정확일치) 쓰는 Q1·Q2_pass·Q5는 데이터 추가에 brittle(새 AM5보드/PSU/ATX케이스 추가 시 FAIL). Q2_fail·Q4류(ASK bool, noValue 부정도출)는 robust.
+- 근본수정(미정): expected를 parts.yaml에서 파생. 단 "테스트가 구현과 같은 SoT를 봄" 트레이드오프 → 다음 세션 논의.
+
 ## 다음 세션 권장
 지참 파일: `00-overview.md` + `01-infra.md` + `04-experiment.md`
 
 순서:
-1. **(전제3 마무리)** `vllm-svc` ExternalName(또는 고정 Endpoints) 등록 → 클러스터 내부 파드에서 `http://vllm-svc:8000/v1/models` 도달 확인.
-2. **(통합 한 바퀴)** Fuseki(클러스터 내) + GB10(외부) + 에이전트 루프를 한 파드에서 묶기 → NL 한 줄("4080에 맞는 메인보드 추천") → LLM 의도 → resolve+find_compatible → 자연어 종합. Q1~Q5 자연어로 완주.
-3. **(스케일링 미검)** 데이터 확대 시(>1000부품) cold 추론비용·warm 재측정. 추론이 사실상 선형 머티이므로 비용은 입력 트리플 수에 비례 예상 — 실측 필요.
-4. 위 통과 시 클러스터 배포(이미지 빌드·Deployment 다중 컴포넌트).
+1. **(Q2~Q5 자연어 확장)** find_compatible 역방향·타 카테고리쌍(`(gpu,motherboard)`·`(gpu,psu)` 등) + 나머지 3도구(check_compatibility·build_configuration·explain_fact) → Q2~Q5 자연어 완주.
+2. **(미반입 코드 정리)** validate.py·probe_toolcalling.py 재작성 or _PUT_V15_FILES_HERE 정리. 단일출처 원칙 점검. (rdb_boundary.py는 v1.9에 실재화 완료)
+3. **(테스트 견고화)** expected를 parts.yaml 파생으로 — brittleness 해소.
+4. **(스케일링 미검)** >1000부품 cold·재추론 재측정.
+5. 통과 시 이미지 빌드·Deployment 다중 컴포넌트.

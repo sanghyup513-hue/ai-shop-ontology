@@ -1,4 +1,4 @@
-# AI 쇼핑몰 — 설계 인계 01: 인프라 (v1.8)
+# AI 쇼핑몰 — 설계 인계 01: 인프라 (v1.9)
 
 ## 호스트
 - 노트북: i7-1360P (P코어 4 + E코어 8 = 12코어/16스레드) / 32GB RAM / SSD / Windows + VirtualBox
@@ -31,6 +31,7 @@
 3. **RBAC 부트스트랩 미완 시** `kubernetes-admin` Forbidden — `super-admin.conf`로 `clusterrolebinding`(cluster-admin→kubernetes-admin) 직접 생성하면 복구.
 4. `cni plugin not initialized` 로그는 Calico 설치 전까지 **정상**(무시).
 5. Calico operator 설치 직후 Installation CR 만들 때 CRD 등록 레이스 → `kubectl wait --for=condition=established crd/installations.operator.tigera.io` 선행.
+6. **CoreDNS가 systemd-resolved stub(127.0.0.53) 상속** — 파드에서 클러스터외 DNS 해석 불가(vllm-svc 같은 인클러스터명은 됐으나 외부명 실패). 대책: CoreDNS Corefile `forward . 127.0.0.53` → `forward . 10.92.220.71 10.92.220.72`(실 업스트림 DNS 직접 지정). Vagrant 재현 시 재발.
 
 ### RAM 배분 가이드 (22GB 내)
 - k8s 시스템: ~3~4GB
@@ -58,7 +59,9 @@
 - 도달 경로: VM에 tailscale 설치 → 같은 tailnet 합류 → NAT 너머 DERP/홀펀칭으로 GB10 직통. 브리지 불필요.
   - netcheck: UDP 통, Nearest DERP Tokyo ~40ms.
 - `/v1/models` 응답 확인: `id = Qwen/Qwen3.6-35B-A3B`, `max_model_len = 262144`.
-- 클러스터 등록(남은 작업): ExternalName Service 또는 고정 Endpoints → 앱은 `vllm-svc`로 호출 (이식성). **설계완료·실행만 남음.**
+- 클러스터 등록 ✅ 완료: `k8s/vllm-svc.yaml` = **헤드리스** Service(`clusterIP: None`, port 8000) + 수동 Endpoints(ip 100.82.135.124). **ExternalName 폐기**(externalName은 DNS-CNAME용, raw IP 부적합). EndpointSlice 자동 미러링. 앱은 `http://vllm-svc:8000/v1`로 호출. (v1 Endpoints는 k8s 1.33+ deprecation 경고 — 차후 EndpointSlice 직접 작성으로 전환 권장)
+- 키 봉인: `Secret/vllm-api-key` (key=`key`) → 워크로드 env `VLLM_API_KEY` 주입. **이전의 `GB10_API_KEY` 명칭은 v1.9에 `VLLM_API_KEY`로 통일.**
+- 에이전트 가동: `k8s/agent-deploy.yaml` = Deployment(`python:3.12-slim`, `sleep infinity`) + initContainer(`pip install --target=/deps`) + ConfigMap `agent-code`(src/agent_loop.py·tools.py·rdb_boundary.py·requirements.txt + data/catalog.sqlite 동봉, 16KiB로 1MiB cap 한참 아래). 실행: `kubectl exec deploy/agent -- python agent_loop.py "<NL>"`. 코드/데이터 갱신: `kubectl create cm agent-code --from-file=… --dry-run=client -o yaml | kubectl apply -f -; kubectl rollout restart deploy/agent`.
 
 ## 모델: Qwen/Qwen3.6-35B-A3B — tool-calling 실측 통과 ✅
 - 하이브리드 sparse MoE, 활성 ~3B / 총 35B (멀티모달, 262K 컨텍스트). 2026-04 출시(인계 v1.6 작성 시점 이후라 당시 "미확인"이었음).

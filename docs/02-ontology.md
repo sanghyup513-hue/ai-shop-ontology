@@ -1,4 +1,4 @@
-# AI 쇼핑몰 — 설계 인계 02: 온톨로지 (v1.8)
+# AI 쇼핑몰 — 설계 인계 02: 온톨로지 (v1.9)
 
 ## 방식 (B안, 확정)
 - **OWL + 추론기.** 사전추론(materialization): 오프라인 추론 → 도출 사실을 그래프에 펼쳐 저장, 런타임은 조회만. 데이터 변경 시 재추론.
@@ -53,3 +53,4 @@ CPU / Motherboard / GPU / PSU / Case / RAM
 - **resolve 텍스트검색 (미결)**: 현재 IRI localname 매칭. 표시명이 RDB에 있으니 RDB 텍스트검색으로 옮기는 게 자연스러움 → 운영 전제 검증 시 결정.
   - v1.7 관찰: tool-calling 프로브 Stage2에서 모델이 "라이젠 7700X"를 `text="7700X"`로 정규화해 `resolve_entity` 호출. 이 부분문자열을 무엇과 매칭할지(localname vs RDB 표시명)가 전제1(Fuseki) 단계에서 실제로 시험될 지점.
   - v1.8 시점: Fuseki 라이브 추론은 통과했으나 resolve_entity는 아직 Fuseki에 연결 안 됨(verify_fuseki.py는 IRI 직접 사용). 통합 한 바퀴 세션에서 결정.
+  - v1.9: resolve_entity가 Fuseki에 실제 연결됨(tools.py). **localname 매칭 유지** 확정(RDB 표시명 검색은 계속 보류). "7700X"→`cpu_ryzen7_7700x` 실측 1건. ⚠️ rdflib SPARQLStore의 initBindings가 FILTER 내부 변수엔 미전파(subject 위치만) → text는 화이트리스트 검증 후 인라인으로 회피(메타문자 거부 = "쿼리구조에 LLM입력 0" 의도 보존). anchor(subject)는 URIRef initBindings 정상.
