@@ -19,6 +19,10 @@ spec:
       containers:
       - name: fuseki
         image: stain/jena-fuseki
+        # vm1 containerd가 호스트 DNS(127.0.0.53 stub)로 docker.io를 해석하는데
+        # 그 경로가 죽으면 :latest + Always는 재시작마다 ImagePullBackOff.
+        # 캐시된 이미지를 재사용해 containerd DNS 의존을 제거.
+        imagePullPolicy: IfNotPresent
         args:
         - /jena-fuseki/fuseki-server
         - --config=/fuseki-config/fuseki-assembler.ttl

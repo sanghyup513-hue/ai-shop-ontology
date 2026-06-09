@@ -1,7 +1,7 @@
-# AI 쇼핑몰 — 설계 인계 00: 개요 (v1.9)
+# AI 쇼핑몰 — 설계 인계 00: 개요 (v2.0)
 
 > **새 세션 시작 시 이 파일은 항상 지참. 그 세션에서 다룰 파일만 추가로 지참.**
-> 변경 이력: v1.4(OWL RL·Jena Fuseki 확정) → v1.5(작업1~4 설계+코드 검증) → v1.6(작업5 완료·문서 5분할·GitHub 저장소 개설) → v1.7(전제2·3 실측 통과: GB10 tool-calling 동작·도달 확인, k8s 단일노드 클러스터 실제 기동) → v1.8(**전제1 Fuseki 실측 통과**: 클러스터 파드에서 5규칙 라이브 발화 + Q1~Q5 정합 + 타이밍 cold 150ms / warm 39ms) → v1.9(전제3 마무리: vllm-svc 수동Endpoints 등록·파드도달 ✅ / 통합 한 바퀴 Q1 경로 실인프라 완주: NL→LLM(qwen3_coder)→resolve→find_compatible→자연어 종합 / 레포-문서 src 불일치 정정 / **agent Deployment 실가동**: ConfigMap(src+catalog.sqlite) + initContainer pip + Secret `vllm-api-key` / **IRI→표시명 룩업 연결**: rdb_boundary 실재화·`_enrich` 도구결과 후처리·SYSTEM 강화로 basis 명시·표시명 노출 검증 통과)
+> 변경 이력: …v1.9(전제3 마무리·통합 한 바퀴 Q1·agent Deployment 실가동·IRI→표시명 룩업) → **v2.0(find_compatible 10쌍 실가동·Q2(gpu→psu 역방향)·Q5(gpu→case 정방향) 자연어 완주 / CoreDNS upstream 8.8.8.8 전환·Fuseki imagePullPolicy:IfNotPresent 안정화)**
 
 ## 목표
 아마존 Rufus 스타일 대화형 AI 쇼핑몰. 자연어 요청 → LLM 의도해석 → 온톨로지/데이터 질의 → 자연어 추천. 기능 하드코딩 대신 데이터 + 온톨로지 + LLM.
@@ -23,33 +23,33 @@
 `https://github.com/sanghyup513-hue/ai-shop-ontology` (private)
 ```
 docs/        이 문서들
-ontology/    pc-schema.ttl · pc-compat.rules  (v1.5 산출물, 직접 투입)
-data/        parts.yaml (단일 출처)  ← pc-data.ttl · catalog.sqlite 는 빌드 산출물(gitignore)
-src/         [실재] load.py · verify_fuseki.py(env전환) · verify_task5.py · tools.py(5도구중 2) · agent_loop.py(2도구 루프 + _enrich 표시명) · rdb_boundary.py(resolve_display_names)
-             [미커밋·placeholder] validate.py · probe_toolcalling.py — git 히스토리 전무. probe는 v1.7에 실행됐으나 코드 미반입. _PUT_V15_FILES_HERE.txt 가 자리표시.
-infra/vagrant/  Vagrantfile · provision/01-common.sh · provision/02-init.sh  (v1.7, k8s 단일노드)
-k8s/         fuseki-assembler.ttl · fuseki-deploy.yaml · vllm-svc.yaml(수동Endpoints) · agent-deploy.yaml(신규, ConfigMap+initContainer+Secret 패턴) · probe-vllm.yaml(디버그 보존)
+ontology/    pc-schema.ttl · pc-compat.rules
+data/        parts.yaml  ← pc-data.ttl · catalog.sqlite 는 빌드 산출물(gitignore)
+src/         load.py · verify_fuseki.py · verify_task5.py
+             tools.py(v2.0: 10쌍) · agent_loop.py(v2.0: 10쌍+Q2/Q5 SYSTEM) · rdb_boundary.py
+             [미커밋] validate.py · probe_toolcalling.py
+infra/vagrant/  Vagrantfile · provision/01-common.sh · provision/02-init.sh
+k8s/         fuseki-assembler.ttl · fuseki-deploy.yaml(imagePullPolicy:IfNotPresent)
+             vllm-svc.yaml · agent-deploy.yaml · probe-vllm.yaml
 ```
 
-## 작업 우선순위 (v1.8 기준)
-1. ~~온톨로지 스키마~~ ✅  2. ~~SPARQL 도구 인터페이스~~ ✅  3. ~~RDB 경계~~ ✅
+## 작업 우선순위 (v2.0 기준)
+1. ~~온톨로지 스키마~~ ✅  2. ~~SPARQL 도구 인터페이스~~ ✅(2종 완료, 3종 미구현)  3. ~~RDB 경계~~ ✅
 4. ~~에이전트 루프~~ ✅    5. ~~데이터 출처/적재~~ ✅
 
-**운영 전제 3종 검증 (실제 환경):**
-- [x] **전제1 Fuseki 실측** ✅ 통과. Jena 5.1.0 + GenericRuleReasoner(hybrid 기본). 클러스터 파드에서 5규칙 라이브 발화·Q1~Q5 드라이런 결과와 일치·noValue/sum/ge/le 빌트인 4종 작동. 타이밍: cold 150ms / warm 39ms / 추론비용 110ms (26부품 규모). (상세 04)
-- [x] **전제2 Qwen tool-calling** ✅ 실측통과. parser=`qwen3_coder`, reasoning-parser=`qwen3`. Stage1(구조)·Stage2(루프-정합) 둘 다 PASS. fallback 불필요. (상세 01·04)
-- [x] **전제3 GB10 도달·등록** ✅ 완료. vllm-svc = 셀렉터없는 Service + 수동 Endpoints(raw tailnet IP 100.82.135.124:8000). 임시파드 curl→/v1/models 응답 확인 = 파드 egress→tailnet 라우팅 증명(Calico masq 우려 해소). (상세 01)
+**운영 전제 3종 검증:** 전부 ✅ (상세 v1.9 이력 참조)
 
-**부수 성과:** k8s 단일노드 클러스터를 실제로 기동 완료(VM1, Calico Ready). 기동 중 드러난 호스트 의존 이슈(vCPU·타이머·kubeadm 타임아웃)는 01-infra에 기록.
+**자연어 완주 현황:**
+- [x] Q1 socketCompatible (cpu→mb) ✅ v1.9
+- [x] Q2 powerSufficient (gpu→psu 역방향) ✅ **v2.0** — 4건 + basis 노출 + 표시명 치환
+- [x] Q5 gpuFitsCase (gpu→case 정방향) ✅ **v2.0** — 2건 + basis 노출
+- [ ] Q3 build_configuration (GPU 앵커 → 완전 견적)
+- [ ] Q4 check_compatibility (두 IRI 간 호환 여부 + 예외 우선순위)
 
-→ 전제 3종 ✅ + **통합 한 바퀴 Q1 경로 실인프라 완주** ✅ (NL "7700X 메인보드"→ resolve_entity→ surface IRI→ find_compatible(socketCompatible)→ 2건→ `_enrich`로 IRI→표시명 치환→ basis 인용 자연어 종합. 불변식1·MAX_DEPTH·relation비노출·표시명만 노출 전수 통과). 다음: **Q2~Q5 자연어 확장 + 나머지 3도구(check/build/explain) + `(gpu,motherboard)` 등 호환관계 확장**. 지참 = 00 + 03 + 04.
+**다음:** check_compatibility 구현 → Q4 자연어 완주. 지참 = 00 + 03 + 04.
 
 ## 에이전트 자율성 경계
-핵심: "무엇을 만들지"는 사람, "어떻게 작동시킬지"는 에이전트 자율 반복.
-- **자율 위임** (성공조건 기계판정 가능): 스키마 코드화·샘플 적재·SPARQL 작성·빌드/설치 에러해결·테스트 있는 코딩. 검증질의 5종 = 기계 판정 성공조건.
-- **사람 결정**: 설계 결정(OWL 프로파일=RL ✅, 스토어=Jena ✅, 모델링 대상), 주관적 품질.
-- **승인 게이트**: 클러스터 배포·데이터 삭제/재적재 (deployer는 실행 전 승인, coder는 편집·테스트 자율).
-- 안전장치: 명확한 성공조건 / 서브에이전트 권한 차등 / 검증 에이전트 분리(짜는 ≠ 검증) / 큰 단계마다 체크포인트.
+(변경 없음 — v1.9 참조)
 
 ## 문서 구성
 | 파일 | 내용 | 세션 지참 기준 |

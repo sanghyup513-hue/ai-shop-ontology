@@ -36,7 +36,16 @@ LOCALNAME_PREFIX_TO_CATEGORY = {
 # (anchor_category, target_category) → (relation_localname, forward)
 # forward=True: ?anchor :rel ?t / forward=False: ?t :rel ?anchor
 COMPAT_RELATION = {
-    ("cpu", "motherboard"): ("socketCompatible", True),
+    ("cpu", "motherboard"):  ("socketCompatible", True),
+    ("motherboard", "cpu"):  ("socketCompatible", False),
+    ("ram", "motherboard"):  ("ramCompatible",    True),
+    ("motherboard", "ram"):  ("ramCompatible",    False),
+    ("motherboard", "case"): ("boardFitsCase",    True),
+    ("case", "motherboard"): ("boardFitsCase",    False),
+    ("psu", "gpu"):          ("powerSufficient",  True),
+    ("gpu", "psu"):          ("powerSufficient",  False),
+    ("gpu", "case"):         ("gpuFitsCase",      True),
+    ("case", "gpu"):         ("gpuFitsCase",      False),
 }
 
 _TEXT_RE = re.compile(r"^[a-z0-9_]+$")
