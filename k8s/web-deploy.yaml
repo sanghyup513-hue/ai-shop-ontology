@@ -1,0 +1,90 @@
+# web — UI 서빙 + 에이전트 루프(LLM 의도해석·도구호출·종합) + 온톨로지 클라이언트.
+# RDB 는 rdb-svc 로(HTTP), 룰추론은 fuseki-svc 로(SPARQL), LLM 은 vllm-svc(GB10)로.
+# 의존성(openai·rdflib·yaml) → initContainer 로 /deps 에 설치.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: default
+  labels:
+    app: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      initContainers:
+        - name: deps
+          image: python:3.12-slim
+          command:
+            - sh
+            - -c
+            - pip install --no-cache-dir --target=/deps -r /code/requirements.txt
+          volumeMounts:
+            - name: code
+              mountPath: /code
+            - name: deps
+              mountPath: /deps
+      containers:
+        - name: web
+          image: python:3.12-slim
+          workingDir: /code
+          command: ["python", "/code/server.py"]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: PYTHONPATH
+              value: /deps:/code
+            - name: PORT
+              value: "8080"
+            - name: RDB_URL
+              value: http://rdb-svc:8081
+            - name: FUSEKI_URL
+              value: http://fuseki-svc.default:3030/pc/sparql
+            - name: VLLM_BASE_URL
+              value: http://vllm-svc:8000/v1
+            - name: VLLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vllm-api-key
+                  key: key
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          volumeMounts:
+            - name: code
+              mountPath: /code
+            - name: deps
+              mountPath: /deps
+      volumes:
+        - name: code
+          configMap:
+            name: agent-code
+        - name: deps
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-svc
+  namespace: default
+  labels:
+    app: web
+spec:
+  type: NodePort
+  selector:
+    app: web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      nodePort: 30080

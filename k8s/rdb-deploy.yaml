@@ -1,0 +1,61 @@
+# rdb — 관계형 데이터(표시명·가격) 서비스. stdlib only → initContainer/deps 불필요.
+# catalog.sqlite 의 단독 권한자. web 컨테이너는 rdb-svc 를 통해서만 표시명을 얻는다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rdb
+  namespace: default
+  labels:
+    app: rdb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rdb
+  template:
+    metadata:
+      labels:
+        app: rdb
+    spec:
+      containers:
+        - name: rdb
+          image: python:3.12-slim
+          workingDir: /code
+          command: ["python", "/code/rdb_service.py"]
+          ports:
+            - name: http
+              containerPort: 8081
+          env:
+            - name: CATALOG_DB
+              value: /code/catalog.sqlite
+            - name: PORT
+              value: "8081"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          volumeMounts:
+            - name: code
+              mountPath: /code
+      volumes:
+        - name: code
+          configMap:
+            name: agent-code
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rdb-svc
+  namespace: default
+  labels:
+    app: rdb
+spec:
+  type: ClusterIP
+  selector:
+    app: rdb
+  ports:
+    - name: http
+      port: 8081
+      targetPort: 8081

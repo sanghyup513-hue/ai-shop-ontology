@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>온톨로지 그래프 — 라이브 (Fuseki)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#ECEFF3; --surface:#FFFFFF; --ink:#14161B; --ink-soft:#5B6470;
+    --line:#DBE0E7; --accent:#2D4BFF; --accent-soft:#E9ECFF;
+    --disp:'Space Grotesk',sans-serif; --body:'Inter',sans-serif; --mono:'IBM Plex Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--body);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1280px;margin:0 auto;padding:0 24px}
+  header{border-bottom:1px solid var(--line);background:rgba(236,239,243,.85);backdrop-filter:blur(8px);position:sticky;top:0;z-index:20}
+  .bar{display:flex;align-items:center;justify-content:space-between;height:60px;gap:16px}
+  .brand{display:flex;align-items:center;gap:10px;font-family:var(--disp);font-weight:700;font-size:18px;letter-spacing:-.02em}
+  .brand .dot{width:11px;height:11px;border-radius:3px;background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .back{font-family:var(--mono);font-size:12.5px;color:var(--ink-soft);text-decoration:none}
+  .back:hover{color:var(--accent)}
+
+  .hero{padding:30px 0 8px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:500;margin-bottom:10px}
+  h1{font-family:var(--disp);font-weight:700;font-size:clamp(24px,3.4vw,38px);line-height:1.05;letter-spacing:-.025em}
+  h1 .em{color:var(--accent)}
+  .sub{margin-top:12px;max-width:76ch;color:var(--ink-soft);font-size:15px}
+
+  /* ---- dark instrument canvas ---- */
+  .panel{background:#0E1015;border:1px solid #23262F;border-radius:16px;margin:20px 0 60px;overflow:hidden;
+    box-shadow:0 24px 70px rgba(20,22,27,.28)}
+  .ctl{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:15px 18px;border-bottom:1px solid #23262F;
+    background:linear-gradient(180deg,#16191F,#0E1015)}
+  .toggle{display:flex;align-items:center;gap:9px;font-size:13px;cursor:pointer;user-select:none;color:#C9D1D9;
+    background:#1B1F28;border:1px solid #2B2F3A;border-radius:10px;padding:8px 13px;transition:.18s}
+  .toggle:hover{border-color:#3a4150}
+  .toggle input{display:none}
+  .toggle .sw{width:32px;height:18px;border-radius:99px;background:#39404C;position:relative;transition:.18s;flex-shrink:0}
+  .toggle .sw::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:99px;background:#fff;transition:.18s}
+  .toggle input:checked + .sw::after{transform:translateX(14px)}
+  .toggle.asserted input:checked + .sw{background:#7C8595}
+  .toggle.inferred  input:checked + .sw{background:#7E97FF}
+  .toggle.exception input:checked + .sw{background:#FF6B6F}
+  .toggle.inferred{font-weight:600}
+  .toggle.inferred.on{border-color:#7E97FF;box-shadow:0 0 0 1px rgba(126,151,255,.4),0 0 18px rgba(126,151,255,.25)}
+  .ctl .spacer{flex:1}
+  .btn{font-family:var(--disp);font-weight:600;font-size:13px;color:#C9D1D9;background:#1B1F28;border:1px solid #2B2F3A;
+    border-radius:10px;padding:8px 14px;cursor:pointer}
+  .btn:hover{border-color:#7E97FF;color:#fff}
+  .cnt{font-family:var(--mono);font-size:11.5px;color:#7C8595}
+  .cnt b{color:#E8ECF2}
+
+  .stagewrap{position:relative}
+  #svg{display:block;width:100%;height:auto;background:radial-gradient(ellipse 70% 60% at 50% 42%,#1A1E29 0%,#0E1015 70%)}
+  .lbl{font-family:var(--body);font-size:9.5px;fill:#C2CAD4;font-weight:500;pointer-events:none;
+    paint-order:stroke;stroke:#0E1015;stroke-width:3px;stroke-linejoin:round}
+  .lblv{font-family:var(--mono);font-size:11.5px;fill:#FFCB6B;font-weight:600;pointer-events:none;letter-spacing:.02em;
+    paint-order:stroke;stroke:#0E1015;stroke-width:3.5px;stroke-linejoin:round}
+  .node{cursor:grab}
+  .edge{transition:opacity .55s ease, stroke-width .2s}
+  .edge.inferred{filter:drop-shadow(0 0 3px rgba(126,151,255,.55))}
+  .edge.exception{filter:drop-shadow(0 0 3px rgba(255,107,111,.5))}
+
+  .vpulse{animation:vp 2.6s ease-in-out infinite}
+  @keyframes vp{0%,100%{opacity:.16}50%{opacity:.30}}
+
+  /* hover info chip */
+  #info{position:absolute;left:16px;bottom:16px;max-width:60%;background:rgba(20,23,30,.92);
+    border:1px solid #2B2F3A;border-radius:11px;padding:11px 14px;color:#C9D1D9;font-size:13px;
+    backdrop-filter:blur(6px);opacity:0;transition:.18s;pointer-events:none}
+  #info.show{opacity:1}
+  #info .nm{font-family:var(--disp);font-weight:600;color:#fff;font-size:14px}
+  #info .rel{font-family:var(--mono);font-size:11.5px;color:#7E97FF;margin-top:4px}
+  #info .rel .k{color:#7C8595}
+  #info .hint{font-family:var(--mono);font-size:10.5px;color:#7C8595;margin-top:5px}
+
+  .legend{display:flex;gap:22px;flex-wrap:wrap;align-items:center;padding:13px 18px;border-top:1px solid #23262F;
+    font-size:12.5px;color:#7C8595;background:#0E1015}
+  .legend .grp{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .legend .it{display:flex;align-items:center;gap:6px;cursor:default}
+  .legend .it.cat{cursor:pointer;padding:3px 7px;border-radius:7px;transition:.15s}
+  .legend .it.cat:hover{background:#1B1F28;color:#E8ECF2}
+  .legend .it.cat.mute{opacity:.4}
+  .legend .dot{width:11px;height:11px;border-radius:99px}
+  .legend .vd{width:13px;height:13px;border-radius:99px;background:#FFCB6B;box-shadow:0 0 8px #FFCB6B}
+  .legend .ln{display:inline-block;width:20px;border-top-width:2px;border-top-style:solid}
+  .legend b{color:#E8ECF2;font-family:var(--disp);font-weight:600}
+  .legend .sep{width:1px;height:16px;background:#23262F}
+
+  .read{font-family:var(--mono);font-size:11.5px;color:#7C8595;padding:0 18px 14px;background:#0E1015;line-height:1.7}
+  .read b{color:#C9D1D9}
+  .loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#7C8595;
+    font-family:var(--mono);font-size:13px}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid #2B2F3A;border-top-color:#7E97FF;
+    border-radius:99px;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:8px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header><div class="wrap bar">
+  <div class="brand"><span class="dot"></span>온톨로지 커머스</div>
+  <a class="back" href="/">← 추천 데모로</a>
+</div></header>
+
+<main class="wrap">
+  <section class="hero">
+    <div class="eyebrow">Fuseki 라이브 · 기반사실 + 추론엣지</div>
+    <h1>호환은 <span class="em">데이터의 모양</span>입니다.</h1>
+    <p class="sub">부품(원)은 <b>같은 통제어휘 개체</b>(AM5·DDR5·ATX…, <span style="color:#A8761C">금색 허브</span>)를 가리키며 연결됩니다.
+      호환은 문자열 비교가 아니라 이 <b>개체 공유</b>로 정의돼요. <b>"추론된 호환"</b>을 켜면, 추론기(Jena)가 그 공유에서
+      <span style="color:var(--accent)">스스로 도출</span>한 호환 엣지가 부품들 사이에 피어납니다. 노드에 마우스를 올리면 그 부품의 관계만 밝아집니다.</p>
+  </section>
+
+  <div class="panel">
+    <div class="ctl">
+      <label class="toggle asserted"><input type="checkbox" id="t-asserted" checked><span class="sw"></span>기반 사실 · 통제어휘 공유</label>
+      <label class="toggle inferred" id="lab-inferred"><input type="checkbox" id="t-inferred"><span class="sw"></span>추론된 호환 · Jena 도출 ✨</label>
+      <label class="toggle exception"><input type="checkbox" id="t-exception" checked><span class="sw"></span>명시적 예외</label>
+      <span class="spacer"></span>
+      <span class="cnt" id="counts"></span>
+      <button class="btn" id="reheat">재배치</button>
+    </div>
+
+    <div class="stagewrap">
+      <svg id="svg" viewBox="0 0 1160 800" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#7E97FF"/>
+          </marker>
+        </defs>
+        <g id="edges"></g><g id="nodes"></g>
+      </svg>
+      <div id="info"></div>
+      <div id="loading" class="loading"><span class="spin"></span>Fuseki에서 트리플 적재 중…</div>
+    </div>
+
+    <div class="legend" id="legend" style="display:none">
+      <div class="grp"><b>부품</b>
+        <span class="it cat" data-cat="CPU"><span class="dot" style="background:#6E8BFF"></span>CPU</span>
+        <span class="it cat" data-cat="Motherboard"><span class="dot" style="background:#4FD18B"></span>메인보드</span>
+        <span class="it cat" data-cat="GPU"><span class="dot" style="background:#FF7A7E"></span>GPU</span>
+        <span class="it cat" data-cat="PSU"><span class="dot" style="background:#E0B24C"></span>PSU</span>
+        <span class="it cat" data-cat="Case"><span class="dot" style="background:#B388FF"></span>케이스</span>
+        <span class="it cat" data-cat="RAM"><span class="dot" style="background:#3FD0DA"></span>RAM</span>
+      </div>
+      <span class="sep"></span>
+      <div class="grp"><b>어휘</b><span class="it"><span class="vd"></span>소켓·RAM타입·폼팩터</span></div>
+      <span class="sep"></span>
+      <div class="grp"><b>엣지</b>
+        <span class="it"><span class="ln" style="border-color:#5A6472"></span>공유(기반)</span>
+        <span class="it"><span class="ln" style="border-color:#7E97FF"></span>추론 호환 →</span>
+        <span class="it"><span class="ln" style="border-color:#FF6B6F;border-top-style:dashed"></span>예외</span>
+      </div>
+    </div>
+    <div class="read">읽는 법 · <b>부품 → 금색 허브</b>로 모이는 회색 선 = "같은 소켓/램타입/폼팩터를 공유".
+      <b>"추론된 호환"</b>을 켜면 파란 화살표가 생김 = 추론기가 그 공유로부터 도출한 호환. 카테고리(범례)를 클릭해 한 종류만 비추거나, 노드를 드래그해 정렬하세요.</div>
+  </div>
+</main>
+
+<script>
+const NS="http://www.w3.org/2000/svg";
+const $=s=>document.querySelector(s);
+const CATCOLOR={CPU:'#6E8BFF',Motherboard:'#4FD18B',GPU:'#FF7A7E',PSU:'#E0B24C',Case:'#B388FF',RAM:'#3FD0DA'};
+const CATKO={CPU:'CPU',Motherboard:'메인보드',GPU:'GPU',PSU:'PSU',Case:'케이스',RAM:'RAM'};
+const RELKO={socketCompatible:'소켓호환',ramCompatible:'램호환',boardFitsCase:'폼팩터',powerSufficient:'전력충분',gpuFitsCase:'GPU길이',incompatibleWith:'예외',
+  hasSocket:'소켓',supportsRAMType:'램지원',hasRAMType:'램타입',hasFormFactor:'폼팩터',supportsFormFactor:'폼팩터수용'};
+const VOCABCOLOR='#FFCB6B';
+const EDGE={asserted:{stroke:'#5A6472',w:1.3,dash:'',op:.30},
+            inferred:{stroke:'#7E97FF',w:1.7,dash:'',op:.82},
+            exception:{stroke:'#FF6B6F',w:2.1,dash:'5 4',op:.92}};
+const W=1160,H=800,CX=W/2,CY=H/2;
+const active={asserted:true,inferred:false,exception:true};
+let nodes=[],links=[],byId={},alpha=1,focusId=null,catFocus=null;
+
+function short(s){ s=String(s); return s.length>13? s.slice(0,12)+'…' : s; }
+
+async function boot(){
+  let g;
+  try{ g=await (await fetch('/api/graph')).json(); if(g.error) throw new Error(g.error); }
+  catch(e){ $('#loading').innerHTML='그래프 적재 실패: '+e.message; return; }
+
+  nodes=g.nodes.map((n,i)=>{
+    const ang=i*2.399, rad=200+(i%6)*52;
+    return {...n, r:(n.kind==='vocab'?15:9), x:CX+Math.cos(ang)*rad, y:CY+Math.sin(ang)*rad, vx:0, vy:0, fx:null, fy:null};
+  });
+  byId={}; nodes.forEach(n=>byId[n.id]=n);
+  links=g.edges.filter(e=>byId[e.s]&&byId[e.o]).map(e=>({...e, source:byId[e.s], target:byId[e.o], _el:null}));
+  // 인접 (포커스용)
+  nodes.forEach(n=>n._adj=new Set());
+  links.forEach(l=>{ l.source._adj.add(l.target.id); l.target._adj.add(l.source.id); });
+
+  $('#counts').innerHTML=`부품 <b>${g.counts.parts}</b> · 공유 <b>${g.counts.asserted}</b> · 추론 <b>${g.counts.inferred}</b> · 예외 <b>${g.counts.exception}</b>`;
+  build(); $('#loading').style.display='none'; $('#legend').style.display='flex';
+  requestAnimationFrame(frame);
+}
+
+function build(){
+  const ge=$('#edges'), gn=$('#nodes'); ge.innerHTML=''; gn.innerHTML='';
+  for(const l of links){
+    const st=EDGE[l.layer], el=document.createElementNS(NS,'path');
+    el.setAttribute('class','edge '+l.layer); el.setAttribute('fill','none');
+    el.setAttribute('stroke',st.stroke); el.setAttribute('stroke-width',st.w);
+    if(st.dash) el.setAttribute('stroke-dasharray',st.dash);
+    if(l.layer==='inferred') el.setAttribute('marker-end','url(#arrow)');
+    el.setAttribute('stroke-linecap','round');
+    ge.appendChild(el); l._el=el;
+  }
+  for(const n of nodes){
+    const isV=n.kind==='vocab', col=isV?VOCABCOLOR:(CATCOLOR[n.category]||'#888');
+    const g=document.createElementNS(NS,'g'); g.setAttribute('class','node');
+    const glow=document.createElementNS(NS,'circle'); glow.setAttribute('r',n.r*2.0); glow.setAttribute('fill',col);
+    glow.setAttribute('opacity',isV?'.22':'.16'); if(isV) glow.setAttribute('class','vpulse');
+    const c=document.createElementNS(NS,'circle'); c.setAttribute('r',n.r); c.setAttribute('fill',col);
+    c.setAttribute('stroke',isV?'#fff':'#0E1015'); c.setAttribute('stroke-width',isV?'2':'1.5');
+    const ti=document.createElementNS(NS,'title'); ti.textContent=n.label+(isV?'':' ['+CATKO[n.category]+']');
+    const t=document.createElementNS(NS,'text'); t.setAttribute('text-anchor','middle');
+    t.setAttribute('y',n.r+12); t.setAttribute('class',isV?'lblv':'lbl'); t.textContent=short(n.label);
+    g.appendChild(glow); g.appendChild(c); g.appendChild(ti); g.appendChild(t);
+    gn.appendChild(g); n._g=g; n._glow=glow;
+    addDrag(n,g); addHover(n,g);
+  }
+  restyle();
+}
+
+// 곡선 + 양끝 노드 반지름만큼 단축 (화살표 보이게)
+function geom(l){
+  const a=l.source,b=l.target;
+  let dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy)||1, ux=dx/d, uy=dy/d;
+  const x1=a.x+ux*(a.r+2), y1=a.y+uy*(a.r+2), x2=b.x-ux*(b.r+5), y2=b.y-uy*(b.r+5);
+  const mx=(x1+x2)/2, my=(y1+y2)/2, k=0.13;       // 곡률
+  const cx=mx-uy*d*k, cy=my+ux*d*k;
+  return `M${x1.toFixed(1)},${y1.toFixed(1)} Q${cx.toFixed(1)},${cy.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)}`;
+}
+
+function visible(n){ return !catFocus || n.kind==='vocab' || n.category===catFocus; }
+function linkVisible(l){
+  if(!active[l.layer]) return false;
+  if(catFocus){ return (l.source.category===catFocus)||(l.target.category===catFocus); }
+  return true;
+}
+
+// 포커스/토글/카테고리에 따른 투명도 — 위치(frame)와 분리해 호버 때만 호출
+function restyle(){
+  for(const l of links){
+    if(!l._el) continue;
+    let op = linkVisible(l) ? EDGE[l.layer].op : 0;
+    let w = EDGE[l.layer].w;
+    if(op>0 && focusId){
+      const inc = (l.source.id===focusId||l.target.id===focusId);
+      op = inc ? Math.max(op,.95) : op*0.07;
+      if(inc) w = EDGE[l.layer].w+0.8;
+    }
+    l._el.setAttribute('stroke-width',w);
+    l._el.style.opacity=op;
+  }
+  for(const n of nodes){
+    let op=visible(n)?1:0.16;
+    if(op>0 && focusId){
+      const f=byId[focusId];
+      op = (n.id===focusId || (f&&f._adj.has(n.id))) ? 1 : 0.16;
+    }
+    n._g.style.opacity=op;
+  }
+}
+
+function frame(){
+  tick();
+  for(const l of links) if(l._el && l._el.style.opacity!=='0') l._el.setAttribute('d',geom(l));
+  for(const n of nodes) n._g.setAttribute('transform',`translate(${n.x.toFixed(1)},${n.y.toFixed(1)})`);
+  requestAnimationFrame(frame);
+}
+
+function tick(){
+  const REP=11000,L=100,KS=0.022,GRAV=0.005,DAMP=0.9;
+  for(let i=0;i<nodes.length;i++){ const a=nodes[i];
+    for(let j=i+1;j<nodes.length;j++){ const b=nodes[j];
+      let dx=a.x-b.x, dy=a.y-b.y, d2=dx*dx+dy*dy; if(d2<1)d2=1;
+      const d=Math.sqrt(d2), f=REP/d2, fx=f*dx/d, fy=f*dy/d;
+      a.vx+=fx; a.vy+=fy; b.vx-=fx; b.vy-=fy; } }
+  for(const l of links){ const a=l.source,b=l.target;
+    let dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy)||0.01;
+    const f=(d-L)*KS, fx=f*dx/d, fy=f*dy/d;
+    a.vx+=fx; a.vy+=fy; b.vx-=fx; b.vy-=fy; }
+  for(const n of nodes){
+    if(n.fx!=null){ n.x=n.fx; n.y=n.fy; n.vx=0; n.vy=0; continue; }
+    n.vx=(n.vx+(CX-n.x)*GRAV)*DAMP; n.vy=(n.vy+(CY-n.y)*GRAV)*DAMP;
+    n.x+=n.vx*alpha; n.y+=n.vy*alpha;
+    n.x=Math.max(30,Math.min(W-30,n.x)); n.y=Math.max(34,Math.min(H-30,n.y));
+  }
+  alpha=Math.max(alpha*0.99,0.02);
+}
+
+function svgPoint(ev){ const svg=$('#svg'),pt=svg.createSVGPoint(); pt.x=ev.clientX; pt.y=ev.clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse()); }
+function addDrag(n,g){
+  g.addEventListener('pointerdown',e=>{
+    e.preventDefault(); g.setPointerCapture(e.pointerId); alpha=Math.max(alpha,.35);
+    const move=ev=>{ const p=svgPoint(ev); n.fx=p.x; n.fy=p.y; alpha=Math.max(alpha,.2); };
+    const up=()=>{ n.fx=null; n.fy=null; window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); };
+    window.addEventListener('pointermove',move); window.addEventListener('pointerup',up);
+  });
+}
+function addHover(n,g){
+  g.addEventListener('pointerenter',()=>{ focusId=n.id; restyle(); showInfo(n); });
+  g.addEventListener('pointerleave',()=>{ focusId=null; restyle(); $('#info').classList.remove('show'); });
+}
+function showInfo(n){
+  const info=$('#info');
+  if(n.kind==='vocab'){
+    const sh=links.filter(l=>l.layer==='asserted'&&(l.source.id===n.id||l.target.id===n.id)).length;
+    info.innerHTML=`<div class="nm">${n.label} <span style="color:#FFCB6B">· 통제어휘</span></div>
+      <div class="rel">${sh}개 부품이 이 개체를 공유 <span class="k">— 호환의 근거</span></div>`;
+  }else{
+    const rels={};
+    links.forEach(l=>{ if(l.source.id===n.id||l.target.id===n.id){ rels[l.p]=(rels[l.p]||0)+1; } });
+    const parts=Object.entries(rels).map(([p,c])=>`<span class="k">${RELKO[p]||p}</span> ${c}`).join(' · ');
+    info.innerHTML=`<div class="nm">${n.label} <span style="color:#7C8595">· ${CATKO[n.category]||n.category}</span></div>
+      <div class="rel">${parts||'관계 없음'}</div>
+      <div class="hint">드래그로 이동 · 추론 토글로 호환 엣지 보기</div>`;
+  }
+  info.classList.add('show');
+}
+
+['asserted','inferred','exception'].forEach(k=>{
+  $('#t-'+k).addEventListener('change',e=>{
+    active[k]=e.target.checked; restyle(); alpha=Math.max(alpha,.32);
+    if(k==='inferred') $('#lab-inferred').classList.toggle('on',e.target.checked);
+  });
+});
+$('#reheat').addEventListener('click',()=>{ alpha=1; });
+document.querySelectorAll('.legend .cat').forEach(it=>{
+  it.addEventListener('click',()=>{
+    const c=it.dataset.cat; catFocus=(catFocus===c)?null:c;
+    document.querySelectorAll('.legend .cat').forEach(x=>x.classList.toggle('mute', catFocus&&x.dataset.cat!==catFocus));
+    restyle(); alpha=Math.max(alpha,.3);
+  });
+});
+
+boot();
+</script>
+</body>
+</html>

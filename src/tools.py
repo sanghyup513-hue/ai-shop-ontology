@@ -168,25 +168,34 @@ _BUILD_PSU = (
 # ===========================================================================
 def resolve_entity(text: str, category: str) -> dict:
     """
-    텍스트(부분문자열) -> IRI. localname CONTAINS 매칭(대소문자 무시).
-    반환: {"iri": "http://.../pc#cpu_ryzen7_7700x", "text": "7700X", "category": "cpu"}
-    결과 없으면 iri=None.
+    텍스트(부분문자열) -> IRI. 2-arm 매칭.
+      arm1 (온톨로지): IRI localname CONTAINS (정규화, 대소문자 무시) — 모델조각/약칭에 강함.
+      arm2 (RDB):     표시명 부분일치 (유일할 때만) — 전체 표시명("Intel Core i5-14600K")·한글("미들타워")에 강함.
+    arm1 이 빗나가면 arm2 로 폴백. arm2 다중매칭은 모호(ambiguous)로 거부해 무성 오답 방지.
+    반환: {"iri": ..., "text", "category", "via": ontology|rdb|miss, "ambiguous"?: bool}
     """
     if category not in CATEGORY_ENUM:
         return {"error": f"unknown category: {category!r}. must be one of {sorted(CATEGORY_ENUM)}"}
     if not _TEXT_SAFE.match(text):
         return {"error": "text contains unsafe characters"}
 
-    # 정규화: 비영숫자 제거 → needle 은 [a-z0-9] 만 남아 인라인 안전(메타문자 0).
-    needle = re.sub(r"[^a-z0-9]", "", text.lower())
-    if not needle:
-        return {"iri": None, "text": text, "category": category}
+    klass = CATEGORY_CLASS[category]
 
-    sparql = _RESOLVE_TMPL.format(
-        ns=PC_NS, cls=CATEGORY_CLASS[category], needle=needle
-    )
-    rows = _run_sparql(sparql)
-    return {"iri": rows[0] if rows else None, "text": text, "category": category}
+    # arm1: 온톨로지 localname CONTAINS. 비영숫자 제거 → needle 은 [a-z0-9] (인라인 안전).
+    needle = re.sub(r"[^a-z0-9]", "", text.lower())
+    if needle:
+        rows = _run_sparql(_RESOLVE_TMPL.format(ns=PC_NS, cls=klass, needle=needle))
+        if rows:
+            return {"iri": rows[0], "text": text, "category": category, "via": "ontology"}
+
+    # arm2: RDB 표시명 부분일치 (유일할 때만). 전체 표시명/한글 표시어 대응.
+    from rdb_boundary import search_by_name
+    matches = search_by_name(text, klass)
+    if len(matches) == 1:
+        return {"iri": PC_NS + matches[0], "text": text, "category": category, "via": "rdb"}
+
+    return {"iri": None, "text": text, "category": category,
+            "via": "miss", "ambiguous": len(matches) > 1}
 
 
 # ===========================================================================
@@ -327,6 +336,28 @@ def build_configuration(anchor_iri: str) -> dict:
                   "ramCompatible", "powerSufficient"],
         "pair_count":     len(configurations),
     }
+
+
+# ===========================================================================
+# 도구 6: get_product_info — RDB 상세(가격·재고·평점·SKU) 조회
+# ===========================================================================
+# 온톨로지(호환 추론)가 아니라 RDB 경계(rdb-svc)를 친다. 가격/재고/평점 질문 전용.
+# IRI 는 resolve_entity 로 확보된 것이어야 함(세션 화이트리스트는 agent_loop 에서 검사).
+def get_product_info(iris) -> dict:
+    """부품 IRI(1개 또는 목록) → RDB 상세. {products:[{iri,category,name,price_krw,stock,sku,rating}], count, missing}."""
+    if isinstance(iris, str):
+        iris = [iris]
+    if not isinstance(iris, list) or not iris:
+        return {"error": "iris must be a non-empty list of IRIs"}
+    bad = [i for i in iris if not _validate_iri(i)]
+    if bad:
+        return {"error": f"invalid IRI(s): {bad}"}
+
+    from rdb_boundary import product_info as _rdb_product_info
+    info = _rdb_product_info(iris)
+    products = [{"iri": i, **info[i]} for i in iris if i in info]
+    missing = [i for i in iris if i not in info]
+    return {"products": products, "count": len(products), "missing": missing}
 
 
 # ===========================================================================

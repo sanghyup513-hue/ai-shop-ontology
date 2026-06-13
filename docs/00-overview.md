@@ -1,7 +1,7 @@
-# AI 쇼핑몰 — 설계 인계 00: 개요 (v2.2)
+# AI 쇼핑몰 — 설계 인계 00: 개요 (v2.3)
 
 > **새 세션 시작 시 이 파일은 항상 지참. 그 세션에서 다룰 파일만 추가로 지참.**
-> 변경 이력: …v2.0(find_compatible 10쌍·Q2·Q5 자연어) → v2.1(check_compatibility·Q4 / noValue 제거·incompatibleWith 앱계층 이관 / resolve 정규화) → **v2.2(build_configuration·Q3 / explain_fact / verify_q3 건전성 가드 / `<think>` strip / 배포 restart 제거 / resolve 한글 gap 기록 — 최소 실험 한 바퀴 사실상 완주)**
+> 변경 이력: …v2.0(find_compatible 10쌍·Q2·Q5 자연어) → v2.1(check_compatibility·Q4 / noValue 제거·incompatibleWith 앱계층 이관 / resolve 정규화) → v2.2(build_configuration·Q3 / explain_fact / verify_q3 건전성 가드 / `<think>` strip / 배포 restart 제거 / resolve 한글 gap 기록) → **v2.3(brittleness 근본수정 완료 — Q3 완전성 + verify_fuseki 손-리터럴 해소 via oracle.py. 기대값 전부 parts.yaml 단일출처 파생·매직넘버 0, 라이브 ALL PASS)**
 
 ## 목표
 아마존 Rufus 스타일 대화형 AI 쇼핑몰. 자연어 요청 → LLM 의도해석 → 온톨로지/데이터 질의 → 자연어 추천. 기능 하드코딩 대신 데이터 + 온톨로지 + LLM.
@@ -28,13 +28,17 @@
 docs/        이 문서들
 ontology/    pc-schema.ttl · pc-compat.rules(v2.1: rule1 noValue 제거)
 data/        parts.yaml  ← pc-data.ttl · catalog.sqlite 는 빌드 산출물(gitignore)
-src/         load.py · verify_fuseki.py · verify_task5.py · verify_q3.py(v2.2)
-             tools.py(5도구 완비) · agent_loop.py(5도구+think strip) · rdb_boundary.py
+src/         load.py · verify_fuseki.py(v2.3: oracle 파생) · verify_task5.py · verify_q3.py(완전성)
+             oracle.py(v2.3: parts.yaml→기대치 파생) · tools.py(5도구 완비) · agent_loop.py(5도구+think strip) · rdb_boundary.py
              [미커밋] validate.py · probe_toolcalling.py
+             server.py(웹+API) · rdb_service.py(RDB HTTP)
+web/         index.html(메인 UI·토큰/비용 패널) · ontology.html(그래프 시각화)
 infra/vagrant/  Vagrantfile · provision/01-common.sh · provision/02-init.sh
 k8s/         fuseki-assembler.ttl · fuseki-deploy.yaml(imagePullPolicy:IfNotPresent)
-             vllm-svc.yaml · agent-deploy.yaml · probe-vllm.yaml
+             vllm-svc.yaml · web-deploy.yaml(web+web-svc:30080) · rdb-deploy.yaml(rdb-svc) · probe-vllm.yaml
+             (구 agent-deploy.yaml 삭제 — web/rdb 4계층으로 대체)
 ```
+> **배포·실행 명령(복붙)은 `README.md` → 실행 2(클러스터 배포)** 에 정본. 토큰/비용 패널은 `03-runtime.md`.
 
 ## 작업 우선순위 (v2.2 기준)
 1. ~~온톨로지 스키마~~ ✅  2. ~~SPARQL 도구 인터페이스 (5종)~~ ✅  3. ~~RDB 경계~~ ✅
@@ -42,20 +46,20 @@ k8s/         fuseki-assembler.ttl · fuseki-deploy.yaml(imagePullPolicy:IfNotPre
 
 **운영 전제 3종 검증:** 전부 ✅
 
-**도구 5종:** resolve_entity ✅ / find_compatible ✅ / check_compatibility ✅ / build_configuration ✅ / explain_fact ✅
+**도구 6종:** resolve_entity ✅ / find_compatible ✅ / check_compatibility ✅ / build_configuration ✅ / explain_fact ✅ / get_product_info ✅ (v2.4, RDB 가격·재고 질의)
 
 **자연어 완주 현황 (Q1~Q5 전부 ✅):**
 - [x] Q1 socketCompatible (cpu→mb) ✅ v1.9
 - [x] Q2 powerSufficient (gpu→psu 역방향) ✅ v2.0
-- [x] Q3 build_configuration (GPU 앵커 → 완전 견적) ✅ **v2.2** — 라이브 통과. 카운트 검증은 건전성 불변식(verify_q3)으로 대체
+- [x] Q3 build_configuration (GPU 앵커 → 완전 견적) ✅ **v2.2** — 라이브 통과. 카운트 검증은 건전성+완전성 불변식(verify_q3, v2.3)으로 대체
 - [x] Q4 check_compatibility (두 IRI 호환 + 예외 우선순위) ✅ v2.1
 - [x] Q5 gpuFitsCase (gpu→case) ✅ v2.0 / explain_fact 로 수치 사유 강화 가능
 
 ## 남은 것 (견고화 — 실험 본질 아님)
-1. 완전성 카운트 (parts.yaml 파생) — brittleness step 2
-2. resolve 한글 needle gap — 빈 needle 거부 또는 RDB 표시명 검색 폴백
-3. 미커밋 코드 정리 (validate.py·probe_toolcalling.py)
-4. (미검) 스케일링 >1000부품 cold·재추론
+- ✅ 완전성·verify_fuseki 손-리터럴 (brittleness step 1·2) — v2.3 oracle.py·verify_q3 완전성으로 해소
+1. resolve 한글 needle gap — 빈 needle 거부 또는 RDB 표시명 검색 폴백
+2. 미커밋 코드 정리 (validate.py·probe_toolcalling.py)
+3. (미검) 스케일링 >1000부품 cold·재추론
 
 ## 에이전트 자율성 경계
 (변경 없음 — v1.9 참조)

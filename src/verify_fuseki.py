@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
-"""Fuseki 라이브 추론 검증 Q1~Q5 + cold/warm 타이밍 실측."""
+"""Fuseki 라이브 추론 검증 Q1~Q5 + cold/warm 타이밍 실측.
+
+기대값은 손-리터럴이 아니라 oracle.Oracle 이 parts.yaml 단일출처에서 파생한다
+(brittleness 견고화 #3). parts.yaml 미발견 시 SKIP 이 아니라 [ERROR]+exit 1 —
+기대값을 못 만들면 검증 자체가 불가하므로 하드 실패가 맞다.
+"""
 import os, sys, time, json, urllib.request, urllib.parse
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from oracle import Oracle, OracleError
 
 ENDPOINT = os.environ.get("FUSEKI_SPARQL", "http://fuseki-svc:3030/pc/sparql")
 PFX = "PREFIX pc: <http://example.org/pc#>"
@@ -27,51 +35,53 @@ def short(uri):
     return uri.rsplit("#", 1)[-1] if "#" in uri else uri
 
 
-QUERIES = {
-    "Q1": (
-        "AM5(7700X) → socketCompatible (기대: b650, x670e)",
-        f"{PFX} SELECT ?mb WHERE {{ pc:cpu_ryzen7_7700x pc:socketCompatible ?mb }} ORDER BY ?mb",
-        ["mb"],
-        {"mb_b650_atx", "mb_x670e_atx"},
-    ),
-    "Q2_pass": (
-        "powerSufficient: PSU→4080 (기대: 1000/750/550/510 통과)",
-        f"{PFX} SELECT ?psu WHERE {{ ?psu pc:powerSufficient pc:gpu_rtx4080 }} ORDER BY ?psu",
-        ["psu"],
-        {"psu_1000w", "psu_750w", "psu_550w", "psu_510w"},
-    ),
-    "Q2_fail": (
-        "powerSufficient: psu_500w 4080 통과 여부 (기대: 0건=탈락)",
-        f"{PFX} ASK {{ pc:psu_500w pc:powerSufficient pc:gpu_rtx4080 }}",
-        None,
-        False,
-    ),
-    "Q3": (
-        "GPU 4080 앵커 → boardFitsCase (기대: ATX 보드 4종 × 적합 케이스)",
-        f"{PFX} SELECT ?mb ?case WHERE {{ ?mb pc:boardFitsCase ?case ; pc:hasFormFactor pc:ATX }} ORDER BY ?mb ?case",
-        ["mb", "case"],
-        None,
-    ),
-    "Q4": (
-        "Q4: i5_14600k(LGA1700) ↔ b760_ddr4 socketCompatible 도출됨 "
-        "(소켓 물리 일치 — incompatibleWith 예외는 앱 계층에서 처리)",
-        f"{PFX} ASK {{ pc:cpu_i5_14600k pc:socketCompatible pc:mb_b760_ddr4 }}",
-        None,
-        True,
-    ),
-    "Q4_other": (
-        "Q4 비교: i7_14700k(LGA1700) ↔ b760_ddr4 는 도출 (예외 없으므로)",
-        f"{PFX} ASK {{ pc:cpu_i7_14700k pc:socketCompatible pc:mb_b760_ddr4 }}",
-        None,
-        True,
-    ),
-    "Q5": (
-        "gpuFitsCase: 4080(310mm) → case (기대: full=400, mid=330)",
-        f"{PFX} SELECT ?case WHERE {{ pc:gpu_rtx4080 pc:gpuFitsCase ?case }} ORDER BY ?case",
-        ["case"],
-        {"case_atx_full", "case_atx_mid"},
-    ),
-}
+def build_queries(o: Oracle) -> dict:
+    """parts.yaml 파생 기대값으로 Q1~Q5 검증표를 구성. (desc, query, cols, expected)."""
+    return {
+        "Q1": (
+            "AM5(7700X) → socketCompatible",
+            f"{PFX} SELECT ?mb WHERE {{ pc:cpu_ryzen7_7700x pc:socketCompatible ?mb }} ORDER BY ?mb",
+            ["mb"],
+            o.socket_compatible("cpu_ryzen7_7700x"),
+        ),
+        "Q2_pass": (
+            "powerSufficient: PSU → 4080 (경계 510 포함 통과)",
+            f"{PFX} SELECT ?psu WHERE {{ ?psu pc:powerSufficient pc:gpu_rtx4080 }} ORDER BY ?psu",
+            ["psu"],
+            o.power_sufficient("gpu_rtx4080"),
+        ),
+        "Q2_fail": (
+            "powerSufficient: psu_500w 4080 통과 여부 (경계 미만 → 탈락)",
+            f"{PFX} ASK {{ pc:psu_500w pc:powerSufficient pc:gpu_rtx4080 }}",
+            None,
+            o.power_sufficient_pair("psu_500w", "gpu_rtx4080"),
+        ),
+        "Q3": (
+            "boardFitsCase: ATX 보드 × 적합 케이스",
+            f"{PFX} SELECT ?mb ?case WHERE {{ ?mb pc:boardFitsCase ?case ; pc:hasFormFactor pc:ATX }} ORDER BY ?mb ?case",
+            ["mb", "case"],
+            o.board_fits_case_pairs(form_factor="ATX"),
+        ),
+        "Q4": (
+            "Q4: i5_14600k(LGA1700) ↔ b760_ddr4 socketCompatible 도출됨 "
+            "(소켓 물리 일치 — incompatibleWith 예외는 앱 계층에서 처리)",
+            f"{PFX} ASK {{ pc:cpu_i5_14600k pc:socketCompatible pc:mb_b760_ddr4 }}",
+            None,
+            o.socket_compatible_pair("cpu_i5_14600k", "mb_b760_ddr4"),
+        ),
+        "Q4_other": (
+            "Q4 비교: i7_14700k(LGA1700) ↔ b760_ddr4 는 도출 (예외 없으므로)",
+            f"{PFX} ASK {{ pc:cpu_i7_14700k pc:socketCompatible pc:mb_b760_ddr4 }}",
+            None,
+            o.socket_compatible_pair("cpu_i7_14700k", "mb_b760_ddr4"),
+        ),
+        "Q5": (
+            "gpuFitsCase: 4080(310mm) → case",
+            f"{PFX} SELECT ?case WHERE {{ pc:gpu_rtx4080 pc:gpuFitsCase ?case }} ORDER BY ?case",
+            ["case"],
+            o.gpu_fits_case("gpu_rtx4080"),
+        ),
+    }
 
 
 def run_one(name, desc, query, cols, expected):
@@ -91,17 +101,17 @@ def run_one(name, desc, query, cols, expected):
             dt = (time.perf_counter() - t0) * 1000
             got = data["boolean"]
             ok = (got == expected)
-            print(f"  결과: {got}  기대: {expected}  [{'PASS' if ok else 'FAIL'}]  ({dt:.1f}ms)")
+            print(f"  결과: {got}  기대: {expected} (parts.yaml 파생)  "
+                  f"[{'PASS' if ok else 'FAIL'}]  ({dt:.1f}ms)")
             return ok, dt
         rows, dt = sparql(query)
-        vals = [short(r[cols[0]]) for r in rows] if len(cols) == 1 else rows
-        if expected is None:
-            print(f"  결과({len(rows)}건): {vals}  [정보]  ({dt:.1f}ms)")
-            return True, dt
-        got_set = set(vals)
+        if len(cols) == 1:
+            got_set = {short(r[cols[0]]) for r in rows}
+        else:
+            got_set = {tuple(short(r[c]) for c in cols) for r in rows}
         ok = got_set == expected
         print(f"  결과: {sorted(got_set)}")
-        print(f"  기대: {sorted(expected)}")
+        print(f"  기대: {sorted(expected)} (parts.yaml 파생)")
         print(f"  [{'PASS' if ok else 'FAIL'}]  ({dt:.1f}ms)")
         return ok, dt
     except Exception as e:
@@ -112,9 +122,18 @@ def run_one(name, desc, query, cols, expected):
 def main():
     print("Fuseki 라이브 추론 검증 (Q1~Q5)")
     print(f"엔드포인트: {ENDPOINT}")
+    try:
+        oracle = Oracle()
+    except OracleError as e:
+        print(f"\n[ERROR] {e}")
+        print("전체 결과: SOME FAILED (기대값 파생 불가 → 하드 실패)")
+        return 1
+    print(f"기대값 출처: {oracle.path} (parts.yaml 단일출처 파생)")
+    queries = build_queries(oracle)
+
     all_ok = True
     timings = {}
-    for name, (desc, q, cols, exp) in QUERIES.items():
+    for name, (desc, q, cols, exp) in queries.items():
         ok, dt = run_one(name, desc, q, cols, exp)
         all_ok &= ok
         timings[name] = dt
@@ -123,7 +142,7 @@ def main():
     print("\n=== Cold/Warm 타이밍 (Q1 반복 5회) ===")
     warm_runs = []
     for i in range(5):
-        _, dt = sparql(QUERIES["Q1"][1])
+        _, dt = sparql(queries["Q1"][1])
         warm_runs.append(dt)
         print(f"  run {i+1}: {dt:.1f}ms")
     print(f"\n전체 결과: {'ALL PASS' if all_ok else 'SOME FAILED'}")

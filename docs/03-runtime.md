@@ -19,6 +19,7 @@
 | check_compatibility | 두 IRI 간 호환 여부 + 사유 (예외 우선) | ✅ v2.1 |
 | build_configuration | 앵커 GPU IRI → 완전 견적 세트 | ✅ v2.2 |
 | explain_fact | (subject, predicate, object) → 도출 근거 | ✅ v2.2 |
+| get_product_info | IRI 목록 → RDB 상세(가격·재고·평점·SKU) | ✅ v2.4 — 호환성 아닌 카탈로그 사실 질의용. rdb-svc `/info` 호출 |
 
 ### resolve_entity — v2.1 정규화
 - needle·IRI 양쪽을 `REPLACE(…, "[^a-z0-9]", "")` 후 CONTAINS 비교. `i5-14600K`/`cpu_i5_14600k` → `i514600k` 매칭.
@@ -72,3 +73,39 @@
 - **코드/데이터 갱신**: `kubectl create cm agent-code --from-file=… --dry-run=client -o yaml | kubectl apply -f -` **만**.
   - ⚠️ **`rollout restart` 불필요** (v2.2 정정): ConfigMap 볼륨 마운트 자동 갱신 + per-`exec` 실행 모델 → 다음 `exec`가 새 코드 픽업. restart는 **initContainer(pip 의존성) 변경 시에만**. 불필요한 restart는 CoreDNS-trap 리스크만 추가.
 - 검증: `verify_q3.py`(Q3 건전성), `verify_fuseki.py`(Q1~Q5 라이브), agent_loop 직접 exec.
+
+## 작업6: 웹 서비스 + 역할분리 토폴로지 (v2.4) — `src/server.py`·`src/rdb_service.py`·`web/index.html`
+브라우저에서 온톨로지 추론을 종단까지 보는 라이브 데모. **GB10 Qwen이 의도해석·도구호출·종합**, Fuseki가 룰추론.
+
+### 4계층 역할분리 (각 역할 = 독립 Deployment+Service)
+```
+브라우저 → web-svc(NodePort 30080)
+              │  UI 서빙 + 에이전트 루프 + 온톨로지 클라이언트(tools/SPARQL)
+              ├─ rdb-svc:8081      표시명·가격 (관계형 데이터 단독 권한자)
+              ├─ fuseki-svc:3030   룰추론 (온톨로지 트리플스토어 + GenericRuleReasoner)
+              └─ vllm-svc:8000     GB10 Qwen3.6-35B-A3B (tailnet, 외부)
+```
+- **`src/server.py`** (web) — stdlib `http.server`(ThreadingHTTPServer, 의존=openai·rdflib·yaml). 요청별 `AgentSession` → 세션 상태 격리.
+  - `GET /` index.html / `GET /api/catalog` [onto 스펙(parts.yaml) ⨝ 관계형(rdb-svc)] 머지 / `GET /api/health`(rdb up/down 포함) / `POST /api/ask {q}` → `{answer, trace, turns, tool_calls, engine}`.
+  - 트레이스에는 **IRI 보존 RAW 결과**를 담아 프런트가 카드를 그림(LLM 에는 `_enrich` 표시명본을 넘김).
+  - `/api/catalog` 의 `rel_source` 가 `rdb-svc` 면 경계 라이브, `fallback(parts.yaml)` 이면 rdb 다운.
+- **`src/rdb_service.py`** (rdb) — **stdlib only, 무의존**(initContainer 불필요). catalog.sqlite 의 단독 권한자.
+  - `GET /health` / `GET /catalog`(관계형 행) / `POST /resolve-names {iris}` → `{iri: display_name}`(미스 시 IRI 원본).
+- **`src/rdb_boundary.py` (v2.4 변경)** — sqlite 직접 열기 폐기 → **rdb-svc HTTP 클라이언트**. `resolve_display_names(iris)` 시그니처 보존(tools/agent_loop 무변경). rdb 장애 시 IRI 폴백(degraded).
+- **`agent_loop.py` (v2.4 리팩터)** — 전역 `_session_iris`/`_dispatch` 폐기 → **`AgentSession` 클래스**(`.iris`/`.trace`/`.run`). 동시요청 누수·경합 제거. 모듈 `run()` = CLI 하위호환 래퍼.
+- **`web/index.html`** — B안 데모 UI 재사용. `/api/catalog` 로 카드, `/api/ask` 로 답+실 트레이스 렌더. Claude 호출 전부 제거(운영=GB10).
+- **온톨로지 그래프** (`web/ontology.html` + `GET /ontology`, `GET /api/graph`) — Fuseki 라이브 트리플을 노드-엣지로 시각화(바닐라 JS 포스 레이아웃, 무의존). 부품→통제어휘(소켓·RAM타입·폼팩터) **공유 엣지(기반사실)** + 추론기 머티리얼라이즈 **호환 엣지(추론, 토글)** + **incompatibleWith(예외, 빨간 점선)**. 부품 라벨은 RDB 표시명. 노드 드래그·레이어 토글·재배치. 메인 헤더에서 링크.
+
+### 배포 형상
+- `k8s/rdb-deploy.yaml` = Deployment `rdb`(app=rdb, `python /code/rdb_service.py`, 8081, readinessProbe `/health`) + Service `rdb-svc`(ClusterIP 8081). initContainer/deps 볼륨 없음(stdlib).
+- `k8s/web-deploy.yaml` = Deployment `web`(app=web, `python /code/server.py`, 8080, initContainer pip, env RDB_URL/FUSEKI_URL/VLLM_*) + Service `web-svc`(NodePort **30080**). 접근: `http://192.168.56.10:30080/`.
+- 둘 다 같은 ConfigMap `agent-code` 마운트(코드 단일 출처). **복붙 배포 명령 전체는 `README.md` → 실행 2(클러스터 배포)** 참조 — 15개 `--from-file`(py 10 + html 2 + requirements + parts.yaml + catalog.sqlite), **Bash 파이프**(UTF-8 보존).
+- ~~구 `agent-deploy.yaml`/`agent-svc.yaml`~~ 삭제(web/rdb 로 대체).
+- **재배포 규칙**: ConfigMap 재생성 후 — `server.py`/`agent_loop.py` 등 임포트 모듈 변경 → `rollout restart deploy/web` 필수(장기구동 서버는 자동 리로드 안 됨) / `web/*.html` 만 변경 → 재시작 불필요(`do_GET` 이 매 요청 파일을 새로 읽음, ~10~40초 내 반영).
+- 검증(라이브, 호스트에서): `/api/health rdb=up` · `/api/catalog rel_source=rdb-svc` · `POST /api/ask` Q3/Q4 정답.
+- 참고: 한때 Calico CNI `Unauthorized` 로 롤아웃 불가했으나(2026-06-11 Calico 파드 재시작으로 해소) 현재 정식 Deployment 롤아웃으로 가동.
+
+### 시연 — 토큰·비용 패널 (web UI)
+- `POST /api/ask` 응답에 `tokens`{`input`,`output`,`total`,`query_tokens`,`raw_prompt`,`raw_completion`,`turns[]`} 포함. `server.py: token_summary()` 가 턴별 usage 누계 + vLLM `/tokenize` 로 질문 토큰 실측.
+- **입력 = 사용자 질문만 / 출력 = 답을 내기까지 그 외 전부(시스템 프롬프트·도구정의·N턴 재전송·도구결과·생성)** — "질문 1줄인데 답까지 이만큼" 연출.
+- **비용 환산**은 실제 과금 기준(`raw_prompt`=입력가, `raw_completion`=출력가)으로 Claude(Opus4.8/Sonnet4.6/Haiku4.5)·GPT(4o/4o-mini) 단가표 표시. 단가·환율은 `web/index.html` 상단 `PRICING`/`FX_KRW` 상수에서 수정.

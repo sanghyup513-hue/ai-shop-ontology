@@ -7,11 +7,11 @@
 #   CATALOG_DB    - SQLite 경로 (기본: /code/catalog.sqlite)
 #   VLLM_BASE_URL - vLLM base URL (기본: http://vllm-svc:8000/v1)
 
-import sys, os, json, re
+import sys, os, json, re, time
 from openai import OpenAI
 from tools import (
     resolve_entity, find_compatible, check_compatibility,
-    build_configuration, explain_fact,
+    build_configuration, explain_fact, get_product_info,
     CATEGORY_ENUM, EXPLAINABLE_PREDS,
 )
 from rdb_boundary import resolve_display_names
@@ -105,6 +105,7 @@ TOOLS = [
             "name": "build_configuration",
             "description": (
                 "GPU 를 앵커로 완전 PC 견적 세트를 조립한다.\n"
+                "'견적/구성/빌드/조립/추천' 요청에만 사용. 단순 '가격/재고/평점' 질문에는 쓰지 말 것 → get_product_info.\n"
                 "anchor_iri 는 반드시 이번 세션 resolve_entity 로 얻은 GPU IRI 여야 한다.\n\n"
                 "반환:\n"
                 "  configurations  list - 호환 (보드, 케이스) 쌍 + 각 보드별 CPU/RAM 옵션\n"
@@ -147,14 +148,51 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_product_info",
+            "description": (
+                "부품의 RDB 상세 정보(가격·재고·평점·SKU·표시명)를 조회한다.\n"
+                "가격/재고/평점/판매 여부 등 '카탈로그 사실' 질문에만 사용한다(호환성 아님).\n"
+                "주의: '~에 맞는/호환/들어가는/견적/찾아줘' 질문에는 쓰지 말 것 — "
+                "그건 find_compatible / check_compatibility / build_configuration 이다.\n"
+                "iris 의 각 IRI 는 이번 세션 resolve_entity 로 확보해야 한다.\n\n"
+                "반환: products[{iri, category, name, price_krw, stock, sku, rating}], count, missing.\n\n"
+                "예: 'RTX 4080 가격 얼마야?' -> resolve_entity('4080','gpu') -> get_product_info([gpu_iri])\n"
+                "예: '4080이랑 4090 가격 비교' -> resolve 2회 -> get_product_info([iri1, iri2])"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "iris": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "조회할 부품 IRI 목록 (resolve_entity 결과)",
+                    },
+                },
+                "required": ["iris"],
+            },
+        },
+    },
 ]
 
 # -- SYSTEM 프롬프트 ----------------------------------------------------------
 SYSTEM = """\
-너는 PC 부품 호환성 추천 전문가다. 사용자 질문을 분석해 도구를 순서대로 호출하고 결과를 자연어로 종합한다.
+너는 PC 부품 쇼핑 도우미다. 호환성 추천뿐 아니라 카탈로그에 있는 가격·재고·평점도 안내한다. 사용자 질문을 분석해 도구를 순서대로 호출하고 결과를 자연어로 종합한다.
 
 [필수 규칙]
-1. find_compatible / check_compatibility 호출 전 반드시 resolve_entity 로 IRI 를 먼저 확보한다.
+0. [도구 선택 — 아래 순서로 판단한다]
+   (a) '견적/구성/빌드/조립/추천' → build_configuration (GPU 앵커)
+   (b) 'A에 맞는/호환되는/들어가는 B', 'B 찾아줘' 처럼 한 부품 기준 호환 '목록' → find_compatible
+   (c) 'A랑 B 호환돼?/되나?', '특정 A에 특정 B 들어가?' 처럼 두 부품의 호환 여부 판정 → check_compatibility
+   (d) '왜 A가 B에 맞아/성립해?' → explain_fact
+   (e) '얼마/가격/값/비싸/재고/몇 개/평점/SKU' 처럼 특정 부품의 카탈로그 사실 → get_product_info
+   - 정확히 도구 하나만 고른다. (a)~(d) 호환/견적 도구를 부르면 그 결과로 답하고 끝낸다 — 사용자가 가격을 직접 묻지 않았으면 뒤이어 get_product_info 를 부르지 말 것.
+   - get_product_info 는 오직 (e) 명시적 가격·재고·평점·SKU 질문에만. '맞는/호환/들어가는/견적/찾아줘' 질문엔 절대 금지. 예: "7700X에 맞는 메인보드 찾아줘" → find_compatible (가격 안 물었으니 get_product_info 호출 금지).
+   - '들어가' 구분: "<GPU>가 들어가는 케이스 (알려줘)" = 한 부품 기준 케이스 목록 → find_compatible(gpu→case). build_configuration(전체 견적) 아님. / "<특정 케이스>에 <특정 GPU> 들어가?" = 두 부품 호환 판정 → check_compatibility.
+   - 가격 질문을 "제공하지 않는다"고 거절하지 말 것 — 가격·재고는 RDB 에 있다. 예: "RTX 4080 가격 얼마야?" → resolve_entity('4080','gpu') → get_product_info([gpu_iri]). 가격은 원(₩) 단위, 재고·평점도 함께 안내.
+1. find_compatible / check_compatibility / build_configuration / explain_fact / get_product_info 호출 전 반드시 resolve_entity 로 IRI 를 먼저 확보한다.
 2. IRI 는 이번 세션 resolve_entity 결과에서만 사용한다. 직접 만들지 않는다.
 3. 결과 종합 시:
    - find_compatible: 응답 첫 문장에 basis(호환 술어)를 명시한다.
@@ -176,16 +214,39 @@ SYSTEM = """\
 """
 
 # -- 세션 IRI 화이트리스트 (불변식 1) -----------------------------------------
-_session_iris: set[str] = set()
+# 세션 상태(IRI 화이트리스트 + 트레이스)는 AgentSession 인스턴스가 소유한다.
+# (전역 set 은 장기 구동 HTTP 서버에서 요청 간 누수·동시성 경합을 일으키므로 폐기.)
 
 
-def _surface_iri(iri: str | None) -> None:
-    if iri:
-        _session_iris.add(iri)
+def _ser_msgs(msgs: list) -> list:
+    """GB10 에 실제로 보낸 messages 배열을 직렬화(원문 노출용)."""
+    out = []
+    for m in msgs:
+        if isinstance(m, dict):
+            out.append({k: m[k] for k in ("role", "content", "tool_call_id", "name") if k in m})
+        else:  # SDK assistant message 객체
+            tcs = [{"id": tc.id, "name": tc.function.name, "arguments": tc.function.arguments}
+                   for tc in (getattr(m, "tool_calls", None) or [])]
+            out.append({"role": getattr(m, "role", "assistant"),
+                        "content": getattr(m, "content", None),
+                        "tool_calls": tcs})
+    return out
 
 
-def _check_iri(iri: str) -> bool:
-    return iri in _session_iris
+def _usage(resp) -> dict | None:
+    u = getattr(resp, "usage", None)
+    if not u:
+        return None
+    return {"prompt_tokens": getattr(u, "prompt_tokens", None),
+            "completion_tokens": getattr(u, "completion_tokens", None),
+            "total_tokens": getattr(u, "total_tokens", None)}
+
+
+def _safe_args(s: str):
+    try:
+        return json.loads(s)
+    except Exception:
+        return s
 
 
 def _strip_think(text: str) -> str:
@@ -239,98 +300,181 @@ def _enrich_build(result: dict) -> dict:
     return out
 
 
-# -- 도구 디스패치 ------------------------------------------------------------
-def _dispatch(name: str, args: dict) -> dict:
-    if name == "resolve_entity":
-        result = resolve_entity(**args)
-        _surface_iri(result.get("iri"))
-        return result
+# ===========================================================================
+# AgentSession — 요청 1건 = 인스턴스 1개 (IRI 화이트리스트 + 추론 트레이스)
+# ===========================================================================
+class AgentSession:
+    """단일 사용자 질의의 에이전트 루프 상태.
 
-    if name == "find_compatible":
-        anchor_iri = args.get("anchor_iri", "")
-        if not _check_iri(anchor_iri):
+    - iris   : 이번 세션 resolve_entity 로 surface 된 IRI 화이트리스트 (불변식 1)
+    - trace  : 도구 호출 기록 [{tool, args, result(raw, IRI 보존)}] — 웹 파이프라인 시각화용
+    - answer : GB10 최종 종합 자연어
+    - turns  : LLM 라운드트립 수
+
+    LLM(GB10) 에는 _enrich 로 표시명 치환한 결과를 넘기지만,
+    trace 에는 IRI 가 살아있는 RAW 결과를 저장한다(프런트가 카드를 만든다).
+    """
+
+    def __init__(self) -> None:
+        self.iris: set[str] = set()
+        self.trace: list[dict] = []
+        self.answer: str = ""
+        self.turns: int = 0
+        self.tool_calls: int = 0
+        self.llm_ms: int = 0      # GB10 누적 응답시간
+        self.tool_ms: int = 0     # 도구(Fuseki+RDB) 누적 시간
+        self.llm_io: list[dict] = []   # GB10 요청/응답 원문 (턴별)
+
+    # -- IRI 화이트리스트 -----------------------------------------------------
+    def _surface(self, iri: str | None) -> None:
+        if iri:
+            self.iris.add(iri)
+
+    def _check(self, iri: str) -> bool:
+        return iri in self.iris
+
+    def _need_iri(self, key: str, iri: str) -> dict | None:
+        if not self._check(iri):
             return {"error": (
-                f"anchor_iri {anchor_iri!r} 는 이번 세션에서 resolve_entity 로 "
+                f"{key} {iri!r} 는 이번 세션에서 resolve_entity 로 "
                 "확보되지 않았습니다. 먼저 resolve_entity 를 호출하세요."
             )}
-        raw = find_compatible(**args)
-        for iri in raw.get("results", []):
-            _surface_iri(iri)
-        return _enrich(raw)
+        return None
 
-    if name == "check_compatibility":
-        for key in ("iri_a", "iri_b"):
-            iri = args.get(key, "")
-            if not _check_iri(iri):
-                return {"error": (
-                    f"{key} {iri!r} 는 이번 세션에서 resolve_entity 로 "
-                    "확보되지 않았습니다. 먼저 resolve_entity 를 호출하세요."
-                )}
-        return check_compatibility(**args)
+    # -- 도구 디스패치: (llm_view, raw) 반환 ----------------------------------
+    # llm_view = LLM 에 넘길 표시명-치환 결과 / raw = 트레이스용 IRI-보존 결과
+    def _dispatch(self, name: str, args: dict) -> tuple[dict, dict]:
+        if name == "resolve_entity":
+            raw = resolve_entity(**args)
+            self._surface(raw.get("iri"))
+            return raw, raw
 
-    if name == "build_configuration":
-        anchor_iri = args.get("anchor_iri", "")
-        if not _check_iri(anchor_iri):
-            return {"error": (
-                f"anchor_iri {anchor_iri!r} 는 이번 세션에서 resolve_entity 로 "
-                "확보되지 않았습니다. 먼저 resolve_entity 를 호출하세요."
-            )}
-        raw = build_configuration(**args)
-        # 결과 IRI 전부 surface (후속 질문 대비)
-        for cfg in raw.get("configurations", []):
-            _surface_iri(cfg["mb"]); _surface_iri(cfg["case"])
-            for i in cfg["cpu_options"]: _surface_iri(i)
-            for i in cfg["ram_options"]: _surface_iri(i)
-        for i in raw.get("psu_options", []):
-            _surface_iri(i)
-        return _enrich_build(raw)
+        if name == "find_compatible":
+            err = self._need_iri("anchor_iri", args.get("anchor_iri", ""))
+            if err:
+                return err, err
+            raw = find_compatible(**args)
+            for iri in raw.get("results", []):
+                self._surface(iri)
+            return _enrich(raw), raw
 
-    if name == "explain_fact":
-        for key in ("subject_iri", "object_iri"):
-            iri = args.get(key, "")
-            if not _check_iri(iri):
-                return {"error": (
-                    f"{key} {iri!r} 는 이번 세션에서 resolve_entity 로 "
-                    "확보되지 않았습니다. 먼저 resolve_entity 를 호출하세요."
-                )}
-        return explain_fact(**args)
+        if name == "check_compatibility":
+            for key in ("iri_a", "iri_b"):
+                err = self._need_iri(key, args.get(key, ""))
+                if err:
+                    return err, err
+            raw = check_compatibility(**args)
+            return raw, raw
 
-    return {"error": f"unknown tool: {name}"}
+        if name == "build_configuration":
+            err = self._need_iri("anchor_iri", args.get("anchor_iri", ""))
+            if err:
+                return err, err
+            raw = build_configuration(**args)
+            for cfg in raw.get("configurations", []):
+                self._surface(cfg["mb"]); self._surface(cfg["case"])
+                for i in cfg["cpu_options"]: self._surface(i)
+                for i in cfg["ram_options"]: self._surface(i)
+            for i in raw.get("psu_options", []):
+                self._surface(i)
+            return _enrich_build(raw), raw
 
+        if name == "explain_fact":
+            for key in ("subject_iri", "object_iri"):
+                err = self._need_iri(key, args.get(key, ""))
+                if err:
+                    return err, err
+            raw = explain_fact(**args)
+            return raw, raw
 
-# -- 메인 루프 ---------------------------------------------------------------
-def run(user_query: str) -> str:
-    messages = [
-        {"role": "system", "content": SYSTEM},
-        {"role": "user",   "content": user_query},
-    ]
+        if name == "get_product_info":
+            iris = args.get("iris", [])
+            if isinstance(iris, str):
+                iris = [iris]
+            for iri in iris:
+                err = self._need_iri("iris", iri)
+                if err:
+                    return err, err
+            raw = get_product_info(iris)
+            return raw, raw
 
-    for _ in range(MAX_DEPTH):
-        resp = client.chat.completions.create(
-            model=MODEL,
-            messages=messages,
-            tools=TOOLS,
-            tool_choice="auto",
-        )
-        msg = resp.choices[0].message
+        err = {"error": f"unknown tool: {name}"}
+        return err, err
 
-        if not msg.tool_calls:
-            return _strip_think(msg.content or "")
+    # -- 메인 루프 ------------------------------------------------------------
+    def run(self, user_query: str) -> str:
+        messages = [
+            {"role": "system", "content": SYSTEM},
+            {"role": "user",   "content": user_query},
+        ]
 
-        messages.append(msg)
-        for tc in msg.tool_calls:
-            args   = json.loads(tc.function.arguments)
-            result = _dispatch(tc.function.name, args)
-            messages.append({
-                "role":         "tool",
-                "tool_call_id": tc.id,
-                "content":      json.dumps(result, ensure_ascii=False),
+        for _ in range(MAX_DEPTH):
+            self.turns += 1
+            req_messages = _ser_msgs(messages)        # 보내기 직전 스냅샷
+            _t0 = time.perf_counter()
+            resp = client.chat.completions.create(
+                model=MODEL,
+                messages=messages,
+                tools=TOOLS,
+                tool_choice="auto",
+            )
+            self.llm_ms += int((time.perf_counter() - _t0) * 1000)
+            msg = resp.choices[0].message
+
+            # -- GB10 요청/응답 원문 캡처 + stdout 로깅(kubectl logs -f 로 실시간) --
+            resp_calls = [{"id": tc.id, "name": tc.function.name, "arguments": _safe_args(tc.function.arguments)}
+                          for tc in (msg.tool_calls or [])]
+            self.llm_io.append({
+                "turn":    self.turns,
+                "endpoint": f"{client.base_url}",
+                "request": {"model": MODEL, "tool_choice": "auto",
+                            "tools": [t["function"]["name"] for t in TOOLS],
+                            "messages": req_messages},
+                "response": {"content": msg.content,
+                             "tool_calls": resp_calls,
+                             "finish_reason": resp.choices[0].finish_reason,
+                             "usage": _usage(resp)},
             })
+            print(f"[GB10] turn {self.turns} POST {client.base_url}chat/completions "
+                  f"model={MODEL} → finish={resp.choices[0].finish_reason} "
+                  f"tool_calls={[c['name'] for c in resp_calls]}", flush=True)
+            for c in resp_calls:
+                print(f"        ↳ {c['name']}({json.dumps(c['arguments'], ensure_ascii=False)})", flush=True)
 
-    return "[MAX_DEPTH 초과] 루프 한계에 도달했습니다."
+            if not msg.tool_calls:
+                self.answer = _strip_think(msg.content or "")
+                return self.answer
+
+            messages.append(msg)
+            for tc in msg.tool_calls:
+                self.tool_calls += 1
+                args = json.loads(tc.function.arguments)
+                _d0 = time.perf_counter()
+                llm_view, raw = self._dispatch(tc.function.name, args)
+                ms = int((time.perf_counter() - _d0) * 1000)
+                self.tool_ms += ms
+                self.trace.append({
+                    "tool":   tc.function.name,
+                    "args":   args,
+                    "result": raw,            # IRI 보존본 (프런트 카드용)
+                    "ms":     ms,             # 도구 실행(Fuseki/RDB 왕복) 시간
+                })
+                messages.append({
+                    "role":         "tool",
+                    "tool_call_id": tc.id,
+                    "content":      json.dumps(llm_view, ensure_ascii=False),
+                })
+
+        self.answer = "[MAX_DEPTH 초과] 루프 한계에 도달했습니다."
+        return self.answer
 
 
-# -- 진입점 ------------------------------------------------------------------
+# -- 모듈 진입점 (CLI 하위호환) ----------------------------------------------
+def run(user_query: str) -> str:
+    """CLI/단발 호출용 — 세션 1개를 만들어 최종 자연어만 반환."""
+    return AgentSession().run(user_query)
+
+
 if __name__ == "__main__":
     query = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "7700X 에 맞는 메인보드"
     print(run(query))

@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>온톨로지 커머스 — GB10 라이브</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#ECEFF3; --surface:#FFFFFF; --ink:#14161B; --ink-soft:#5B6470;
+    --line:#DBE0E7; --accent:#2D4BFF; --accent-soft:#E9ECFF;
+    --pass:#1B8F5A; --pass-soft:#E2F4EB; --fail:#D63B40; --fail-soft:#FBE7E8;
+    --warn:#A8761C;
+    --panel:#14161B; --panel-2:#1C1F27; --panel-line:#2B2F3A;
+    --panel-ink:#C9D1D9; --panel-dim:#7C8595; --panel-acc:#7E97FF;
+    --disp:'Space Grotesk',sans-serif; --body:'Inter',sans-serif; --mono:'IBM Plex Mono',monospace;
+    --r:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);font-family:var(--body);
+    line-height:1.5;-webkit-font-smoothing:antialiased}
+  ::selection{background:var(--accent);color:#fff}
+
+  .wrap{max-width:1280px;margin:0 auto;padding:0 24px}
+
+  header{border-bottom:1px solid var(--line);background:rgba(236,239,243,.85);
+    backdrop-filter:blur(8px);position:sticky;top:0;z-index:20}
+  .bar{display:flex;align-items:center;justify-content:space-between;height:60px;gap:16px}
+  .brand{display:flex;align-items:center;gap:10px;font-family:var(--disp);font-weight:700;
+    font-size:18px;letter-spacing:-.02em}
+  .brand .dot{width:11px;height:11px;border-radius:3px;background:var(--accent);
+    box-shadow:0 0 0 3px var(--accent-soft)}
+  .stat{font-family:var(--mono);font-size:11.5px;color:var(--ink-soft);
+    display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+  .stat b{color:var(--ink);font-weight:600}
+  .stat .sep{color:var(--line)}
+  .stat .live{width:7px;height:7px;border-radius:99px;background:var(--ink-soft);display:inline-block;margin-right:5px}
+  .stat .live.up{background:var(--pass);box-shadow:0 0 7px var(--pass)}
+  .stat .live.down{background:var(--fail);box-shadow:0 0 7px var(--fail)}
+
+  .hero{padding:46px 0 26px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--accent);font-weight:500;margin-bottom:14px}
+  h1{font-family:var(--disp);font-weight:700;font-size:clamp(30px,4.4vw,50px);
+    line-height:1.04;letter-spacing:-.03em;max-width:18ch}
+  h1 .em{color:var(--accent)}
+  .sub{margin-top:16px;max-width:54ch;color:var(--ink-soft);font-size:16px}
+
+  .askbox{margin-top:30px;background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--r);box-shadow:0 1px 2px rgba(20,22,27,.04);overflow:hidden}
+  .askrow{display:flex;align-items:center;gap:10px;padding:6px 6px 6px 18px}
+  .askrow .q{font-family:var(--mono);color:var(--accent);font-size:15px;font-weight:600}
+  #q{flex:1;border:0;outline:0;font-family:var(--body);font-size:16px;color:var(--ink);
+    background:transparent;padding:14px 0}
+  #q::placeholder{color:#9AA3AF}
+  #send{font-family:var(--disp);font-weight:600;font-size:14px;color:#fff;background:var(--ink);
+    border:0;border-radius:10px;padding:12px 20px;cursor:pointer;transition:.15s;white-space:nowrap}
+  #send:hover{background:var(--accent)}
+  #send:disabled{opacity:.5;cursor:default}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+  .chip{font-size:13px;font-family:var(--body);color:var(--ink-soft);background:var(--surface);
+    border:1px solid var(--line);border-radius:99px;padding:7px 13px;cursor:pointer;transition:.15s}
+  .chip:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+  .chip b{color:var(--ink);font-weight:600}
+
+  .stage{display:grid;grid-template-columns:1fr 420px;gap:22px;padding:6px 0 60px;
+    align-items:start}
+  @media(max-width:980px){.stage{grid-template-columns:1fr}}
+
+  .answer{min-height:40px}
+  .ans-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .ans-head .qx{font-family:var(--body);font-weight:600;font-size:17px}
+  .verdict{font-family:var(--mono);font-size:12px;font-weight:600;padding:4px 10px;border-radius:7px}
+  .v-pass{background:var(--pass-soft);color:var(--pass)}
+  .v-fail{background:var(--fail-soft);color:var(--fail)}
+  .v-info{background:var(--accent-soft);color:var(--accent)}
+
+  .nlcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+    padding:18px 20px;margin-top:14px;font-size:15.5px;color:#23262E}
+  .nlcard .src{font-family:var(--mono);font-size:11px;color:var(--ink-soft);
+    margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)}
+  .basisline{display:flex;gap:7px;flex-wrap:wrap;margin-top:13px}
+  .rule{font-family:var(--mono);font-size:11.5px;font-weight:500;color:var(--accent);
+    background:var(--accent-soft);border-radius:6px;padding:3px 8px}
+  .rule.x{color:var(--fail);background:var(--fail-soft)}
+
+  /* ---- 토큰 사용량 (시연: 질의당 입력·출력 토큰) ---- */
+  .tokcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+    padding:16px 18px;margin-top:14px;box-shadow:0 1px 2px rgba(20,22,27,.04)}
+  .tokhead{font-family:var(--disp);font-weight:600;font-size:12px;letter-spacing:.04em;
+    text-transform:uppercase;color:var(--ink-soft);margin-bottom:13px;display:flex;align-items:center;gap:9px}
+  .tokhead .tk{font-family:var(--mono);font-size:10.5px;color:#fff;background:var(--accent);
+    border-radius:5px;padding:2px 7px;letter-spacing:.06em}
+  .tokrow{display:flex;align-items:center;gap:13px;flex-wrap:wrap}
+  .tokbox{flex:1;min-width:118px;border-radius:12px;padding:13px 16px;border:1px solid var(--line)}
+  .tokbox .tlab{font-family:var(--mono);font-size:11px;font-weight:500;margin-bottom:6px}
+  .tokbox .tnum{font-family:var(--disp);font-weight:700;font-size:32px;line-height:1;letter-spacing:-.025em}
+  .tokbox.in{background:var(--accent-soft);border-color:#CDD5FF}
+  .tokbox.in .tlab{color:var(--accent)} .tokbox.in .tnum{color:var(--accent)}
+  .tokbox.out{background:var(--pass-soft);border-color:#BFE6D2}
+  .tokbox.out .tlab{color:var(--pass)} .tokbox.out .tnum{color:var(--pass)}
+  .tokbox.tot{background:var(--ink);border-color:var(--ink)}
+  .tokbox.tot .tlab{color:#9AA3AF} .tokbox.tot .tnum{color:#fff}
+  .tokop{font-family:var(--disp);font-weight:700;font-size:26px;color:#B8C0CB}
+  .toktable{margin-top:14px;width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11.5px}
+  .toktable th{text-align:right;color:var(--ink-soft);font-weight:500;padding:5px 10px;border-bottom:1px solid var(--line)}
+  .toktable th:first-child{text-align:left}
+  .toktable td{text-align:right;padding:5px 10px;border-bottom:1px solid var(--line);color:var(--ink)}
+  .toktable td:first-child{text-align:left;color:var(--ink-soft)}
+  .toktable tr:last-child td{border-bottom:0;font-weight:600}
+  .toknote{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);margin-top:10px;line-height:1.55}
+  .toknote .kbd{font-family:var(--mono);background:#F2F4F7;border:1px solid var(--line);border-radius:4px;padding:0 5px;color:#2B2F37}
+  .costtable td.cst{font-family:var(--disp);font-weight:700;color:var(--ink)}
+  .costtable td:last-child.cst{color:var(--accent)}
+  .vd{font-family:var(--mono);font-size:9.5px;font-weight:600;border-radius:4px;padding:1px 5px;margin-right:5px}
+  .vd-c{background:var(--accent-soft);color:var(--accent)}
+  .vd-g{background:var(--pass-soft);color:var(--pass)}
+
+  .grid{display:grid;gap:13px;margin-top:18px}
+  .sech{font-family:var(--disp);font-weight:600;font-size:13px;letter-spacing:.02em;
+    color:var(--ink-soft);text-transform:uppercase;margin:22px 0 4px;display:flex;
+    align-items:center;gap:9px}
+  .sech .n{font-family:var(--mono);font-size:11px;color:#fff;background:var(--ink);
+    border-radius:6px;padding:2px 7px;font-weight:600}
+  .pcard{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+    padding:15px 16px;transition:.15s}
+  .pcard:hover{border-color:#C3CBD6;box-shadow:0 4px 16px rgba(20,22,27,.06);transform:translateY(-1px)}
+  .pcard .name{font-weight:600;font-size:15px}
+  .pcard .meta{font-family:var(--mono);font-size:11.5px;color:var(--ink-soft);margin-top:3px}
+  .pcard .price{font-family:var(--disp);font-weight:700;font-size:16px;margin-top:9px}
+  .pcard .price small{font-weight:500;font-size:12px;color:var(--ink-soft);margin-left:2px}
+
+  .cfg{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+    padding:16px 17px}
+  .cfg .pair{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+  .cfg .pair .b{font-weight:600;font-size:15.5px}
+  .cfg .pair .plus{color:#B8C0CB;font-weight:400}
+  .cfg .opts{margin-top:13px;display:grid;gap:9px}
+  .optrow{display:flex;gap:9px;align-items:flex-start}
+  .optrow .lab{font-family:var(--mono);font-size:11px;color:var(--ink-soft);
+    width:42px;flex-shrink:0;padding-top:5px}
+  .tag{font-size:12.5px;background:#F2F4F7;border:1px solid var(--line);border-radius:7px;
+    padding:4px 9px;color:#2B2F37}
+  .tag b{font-family:var(--disp)}
+  .tagwrap{display:flex;gap:7px;flex-wrap:wrap}
+
+  .empty{background:var(--surface);border:1px dashed var(--line);border-radius:12px;
+    padding:22px;color:var(--ink-soft);font-size:14.5px;text-align:center}
+
+  .pipe{background:var(--panel);border-radius:var(--r);overflow:hidden;position:sticky;top:78px;
+    box-shadow:0 12px 40px rgba(20,22,27,.18)}
+  @media(max-width:980px){.pipe{position:static}}
+  .pipe-h{display:flex;align-items:center;justify-content:space-between;
+    padding:14px 16px;border-bottom:1px solid var(--panel-line)}
+  .pipe-h .t{font-family:var(--disp);font-weight:600;font-size:13px;color:#fff;
+    letter-spacing:.02em;display:flex;align-items:center;gap:8px}
+  .pipe-h .t::before{content:"";width:7px;height:7px;border-radius:99px;background:var(--panel-acc);
+    box-shadow:0 0 8px var(--panel-acc)}
+  .pipe-h .meta{font-family:var(--mono);font-size:10.5px;color:var(--panel-dim)}
+  .pipe-body{padding:6px 0 12px;max-height:none}
+  .step{padding:13px 16px;border-bottom:1px solid var(--panel-line);opacity:.32;
+    transition:opacity .35s,transform .35s;transform:translateY(3px)}
+  .step:last-child{border-bottom:0}
+  .step.on{opacity:1;transform:none}
+  .step .sh{display:flex;align-items:center;gap:9px}
+  .step .sn{font-family:var(--mono);font-size:10px;color:var(--panel-dim);
+    border:1px solid var(--panel-line);border-radius:5px;padding:1px 5px}
+  .step .sl{font-family:var(--disp);font-size:12.5px;font-weight:600;color:#E8ECF2}
+  .step .badge{margin-left:auto;font-family:var(--mono);font-size:10px;padding:2px 7px;
+    border-radius:5px;font-weight:500}
+  .b-llm{background:rgba(126,151,255,.16);color:var(--panel-acc)}
+  .b-det{background:rgba(31,164,99,.16);color:#5DD89B}
+  .step .sbody{font-family:var(--mono);font-size:11.5px;color:var(--panel-ink);
+    margin-top:8px;line-height:1.65;word-break:break-word}
+  .step .sbody .k{color:var(--panel-dim)}
+  .step .sbody .v{color:#fff}
+  .step .sbody .iri{color:var(--panel-acc)}
+  .step .sbody .ok{color:#5DD89B}
+  .step .sbody .no{color:#FF8A8E}
+  .step .sbody .rl{color:#FFCB6B}
+  .pulse{display:inline-block;width:7px;height:13px;background:var(--panel-acc);
+    margin-left:2px;animation:blink 1s steps(2) infinite;vertical-align:middle}
+  @keyframes blink{0%{opacity:1}50%{opacity:0}}
+
+  .arch{padding:13px 16px;background:var(--panel-2);border-top:1px solid var(--panel-line);
+    font-family:var(--mono);font-size:10.5px;color:var(--panel-dim);line-height:1.7}
+  .arch b{color:#A8B4C7;font-weight:500}
+
+  footer{border-top:1px solid var(--line);padding:22px 0 40px;color:var(--ink-soft);
+    font-size:12.5px;font-family:var(--mono)}
+  .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);
+    border-top-color:var(--accent);border-radius:99px;animation:sp .7s linear infinite;
+    vertical-align:-2px;margin-right:7px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* ---- service status strip (데모: 4계층 라이브) ---- */
+  .svcrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 26px}
+  .svc{display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--line);
+    border-radius:10px;padding:9px 13px}
+  .svc .d{width:8px;height:8px;border-radius:99px;background:var(--ink-soft);flex-shrink:0;transition:.2s}
+  .svc.up .d{background:var(--pass);box-shadow:0 0 8px var(--pass)}
+  .svc.down .d{background:var(--fail);box-shadow:0 0 8px var(--fail)}
+  .svc .nm{font-family:var(--disp);font-weight:600;font-size:13.5px}
+  .svc .dt{font-family:var(--mono);font-size:11px;color:var(--ink-soft)}
+  .svc .ms{font-family:var(--mono);font-size:11px;color:var(--accent)}
+  .svcrow .arr{color:#C3CBD6;font-size:15px}
+
+  /* ---- RDB 카탈로그 ---- */
+  .cat{padding:6px 0 54px;border-top:1px solid var(--line);margin-top:8px}
+  .cat-h{display:flex;align-items:baseline;gap:12px;margin:30px 0 4px;flex-wrap:wrap}
+  .cat-h h2{font-family:var(--disp);font-weight:700;font-size:23px;letter-spacing:-.025em}
+  .cat-h .tag-rdb{font-family:var(--mono);font-size:11px;color:var(--pass);background:var(--pass-soft);
+    border-radius:6px;padding:3px 9px;font-weight:600;display:flex;align-items:center;gap:6px}
+  .cat-h .tag-rdb .d{width:7px;height:7px;border-radius:99px;background:var(--pass);box-shadow:0 0 7px var(--pass)}
+  .cat-sub{color:var(--ink-soft);font-size:14.5px;margin-bottom:6px;max-width:70ch}
+  .catgroup{margin-top:20px}
+  .catgroup .gh{font-family:var(--disp);font-weight:600;font-size:12.5px;text-transform:uppercase;
+    letter-spacing:.05em;color:var(--ink-soft);display:flex;align-items:center;gap:8px;margin-bottom:11px}
+  .catgroup .gh .n{font-family:var(--mono);font-size:11px;color:#fff;background:var(--ink);border-radius:6px;padding:2px 7px}
+  .catgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(218px,1fr));gap:11px}
+  .pcard .stk{font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-top:6px}
+  .pcard.hot{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft),0 8px 22px rgba(45,75,255,.16)}
+  .pcard.hot{animation:hot 1.5s ease}
+  @keyframes hot{0%{box-shadow:0 0 0 0 rgba(45,75,255,.5)}100%{box-shadow:0 0 0 2px var(--accent-soft),0 8px 22px rgba(45,75,255,.16)}}
+  .pcard .hotb{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:600;color:var(--accent);
+    background:var(--accent-soft);border-radius:5px;padding:2px 7px;margin-top:8px}
+
+  /* ---- GB10 원문 (LLM 요청·응답) ---- */
+  .rawllm{margin-top:16px;border:1px solid var(--panel-line);border-radius:12px;background:var(--panel);overflow:hidden}
+  .rawllm>summary{cursor:pointer;list-style:none;padding:13px 16px;font-family:var(--disp);font-weight:600;font-size:13px;
+    color:#E8ECF2;display:flex;align-items:center;gap:8px}
+  .rawllm>summary::-webkit-details-marker{display:none}
+  .rawllm>summary::before{content:"▸";color:var(--panel-acc);transition:.15s}
+  .rawllm[open]>summary::before{transform:rotate(90deg)}
+  .rawllm>summary .ep{font-family:var(--mono);font-size:10.5px;color:var(--panel-dim);font-weight:400;margin-left:auto}
+  .rawllm .body{padding:0 16px 14px;max-height:540px;overflow:auto}
+  .llmturn{border-top:1px solid var(--panel-line);padding:12px 0}
+  .llmturn .tt{font-family:var(--mono);font-size:11px;color:var(--panel-acc);margin-bottom:7px}
+  .llmtools{font-family:var(--mono);font-size:10.5px;color:var(--panel-dim);margin-bottom:9px}
+  .msg{font-family:var(--mono);font-size:11px;line-height:1.65;margin:5px 0;color:var(--panel-ink);
+    white-space:pre-wrap;word-break:break-word}
+  .msg .rb{display:inline-block;font-size:9.5px;font-weight:600;border-radius:4px;padding:1px 6px;margin-right:7px}
+  .rb-system{background:#3a2f5e;color:#c9b8ff}
+  .rb-user{background:#1f3a5e;color:#9cc6ff}
+  .rb-assistant{background:rgba(126,151,255,.16);color:var(--panel-acc)}
+  .rb-tool{background:rgba(31,164,99,.16);color:#5DD89B}
+  .msg .tc{color:#FFCB6B}
+  .msg .k{color:var(--panel-dim)}
+  .llmresp{font-family:var(--mono);font-size:11px;color:var(--panel-ink);margin-top:8px;
+    border-top:1px dashed var(--panel-line);padding-top:8px}
+  .llmresp .k{color:var(--panel-dim)} .llmresp .ok{color:#5DD89B} .llmresp .tc{color:#FFCB6B}
+</style>
+</head>
+<body>
+
+<header><div class="wrap bar">
+  <div class="brand"><span class="dot"></span>온톨로지 커머스
+    <a href="/ontology" style="font-family:var(--mono);font-size:12px;font-weight:500;color:var(--accent);text-decoration:none;margin-left:14px;border:1px solid var(--accent-soft);background:var(--accent-soft);border-radius:7px;padding:4px 10px">◇ 온톨로지 그래프 →</a>
+  </div>
+  <div class="stat">
+    <span>추론 <b>GB10 · Qwen3.6-35B-A3B</b></span><span class="sep">│</span>
+    <span>룰추론 <b>Fuseki · Jena</b></span><span class="sep">│</span>
+    <span id="health"><span class="live"></span><b>연결 확인 중…</b></span>
+  </div>
+</div></header>
+
+<main class="wrap">
+  <section class="hero">
+    <div class="eyebrow">자연어 → GB10 의도해석 → 온톨로지 추론 → 추천</div>
+    <h1>호환은 규칙이 <span class="em">추론</span>한다.<br>코드가 아니라 <span class="em">데이터</span>로.</h1>
+    <p class="sub">부품을 말로 물어보세요. GB10의 Qwen LLM은 의도해석·도구호출·설명만 맡고,
+      호환 판정은 클러스터 안 온톨로지 추론기(Fuseki/Jena)가 규칙으로 도출합니다 —
+      옆 패널에 그 실제 추론 과정이 그대로 흐릅니다.</p>
+
+    <div class="askbox">
+      <div class="askrow">
+        <span class="q">›</span>
+        <input id="q" placeholder="예: RTX 4080으로 PC 견적 짜줘" autocomplete="off">
+        <button id="send">물어보기</button>
+      </div>
+    </div>
+    <div class="chips" id="chips"></div>
+  </section>
+
+  <div class="svcrow" id="svcrow"></div>
+
+  <section class="stage">
+    <div class="answer" id="answer"></div>
+
+    <aside class="pipe">
+      <div class="pipe-h">
+        <div class="t">추론 파이프라인</div>
+        <div class="meta" id="pipemeta">대기 중</div>
+      </div>
+      <div class="pipe-body" id="pipe">
+        <div class="step" id="st-idle" style="opacity:1;transform:none">
+          <div class="sbody" style="color:var(--panel-dim)">질문을 입력하면 GB10이 실제로 호출한
+          도구 체인이 여기 흐릅니다.<br><br>
+          <span class="k">·</span> GB10 의도해석·도구선택 <span class="b-llm" style="font-size:10px;padding:1px 5px;border-radius:4px">LLM</span><br>
+          <span class="k">·</span> resolve / find / check / build / explain / product_info <span class="b-det" style="font-size:10px;padding:1px 5px;border-radius:4px">결정적</span><br>
+          <span class="k">·</span> Fuseki 룰추론 (소켓·전력·폼팩터…)<br>
+          <span class="k">·</span> GB10 결과 종합 <span class="b-llm" style="font-size:10px;padding:1px 5px;border-radius:4px">LLM</span></div>
+        </div>
+      </div>
+      <div class="arch">
+        <b>불변식</b> · LLM은 SPARQL을 만들지 않는다 — 파라미터만 채운다.<br>
+        <b>다리</b> · 온톨로지(스펙·추론) ↔ RDB(표시명·가격), 연결은 IRI 하나.
+      </div>
+    </aside>
+  </section>
+
+  <section class="cat" id="catalog">
+    <div class="cat-h">
+      <h2>RDB 카탈로그</h2>
+      <span class="tag-rdb" id="catsrc"><span class="d"></span>rdb-svc</span>
+    </div>
+    <p class="cat-sub">rdb 컨테이너(catalog.sqlite)에 저장된 부품 전부입니다 — 이 부품들이 온톨로지 추론의 대상이 됩니다.
+      <b>표시명·가격·재고</b>는 RDB가, <b>호환 스펙(소켓·전력·폼팩터…)</b>은 온톨로지가 보유합니다. 질문하면 추천된 부품이 여기서 빛납니다.</p>
+    <div id="catbody"></div>
+  </section>
+</main>
+
+<footer class="wrap">
+  역할분리 4계층 · <b>web</b>(UI·에이전트 루프) ⨯ <b>rdb-svc</b>(표시명·가격) ⨯ <b>fuseki</b>(룰추론) ⨯ <b>GB10</b>(Qwen3.6-35B-A3B, tailnet) · parts.yaml 단일출처 26부품 · 결정적 도구 6종
+</footer>
+
+<script>
+/* ============================================================
+   온톨로지 커머스 — 프런트 (백엔드 GB10 라이브 전용)
+   카탈로그는 /api/catalog (parts.yaml) 에서, 답변은 /api/ask 에서.
+   ============================================================ */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const won=n=>Number(n).toLocaleString("ko-KR")+"원";
+const trunc=(s,n)=>{ s=String(s==null?"":s); return s.length>n? s.slice(0,n)+" …("+s.length+"자)" : s; };
+
+let PC="http://example.org/pc#";
+const BY={};                       // localname -> part
+const RELDESC={socketCompatible:"소켓 호환",ramCompatible:"RAM 타입 호환",boardFitsCase:"폼팩터 호환",
+  powerSufficient:"전력 충분",gpuFitsCase:"GPU 길이 적합",incompatibleWith:"명시적 비호환"};
+
+/* ---- 토큰 → 비용 환산 단가 (수정 가능) ----------------------------------
+   per 1M tokens, USD. Claude=Anthropic 공개가(2026), GPT=OpenAI 공개가.
+   캐시·배치 할인 미적용. 환율(FX_KRW)·단가 모두 여기서 바꾸면 화면에 반영됨. */
+const FX_KRW=1400;                 // USD→KRW (데모 환율, 수정 가능)
+const PRICING=[
+  {label:"Claude Opus 4.8",  vendor:"Claude", inp:5.00, out:25.00},
+  {label:"Claude Sonnet 4.6",vendor:"Claude", inp:3.00, out:15.00},
+  {label:"Claude Haiku 4.5", vendor:"Claude", inp:1.00, out: 5.00},
+  {label:"GPT-4o",           vendor:"GPT",    inp:2.50, out:10.00},
+  {label:"GPT-4o mini",      vendor:"GPT",    inp:0.15, out: 0.60},
+];
+
+const local=iri=>String(iri).startsWith(PC)?String(iri).slice(PC.length):String(iri);
+const shortIri=iri=>"pc:"+local(iri);
+const nameOf=loc=>(BY[loc]&&BY[loc].name)||loc;
+
+/* ---- 카탈로그 적재 + 헬스 + 서비스 상태 ---- */
+async function boot(){
+  try{
+    const cat=await (await fetch("/api/catalog")).json();
+    PC=cat.base||PC;
+    CATALOG_ORDER.length=0;
+    cat.parts.forEach(p=>{ BY[p.iri]=p; CATALOG_ORDER.push(p.iri); });
+    const rdbUp=(cat.rel_source||"").startsWith("rdb");
+    setHealth(true, `카탈로그 ${cat.parts.length}부품 · ${rdbUp?"rdb-svc 연결":"rdb 폴백"}`);
+    $("#catsrc").innerHTML=`<span class="d" style="${rdbUp?'':'background:var(--fail);box-shadow:0 0 7px var(--fail)'}"></span>${rdbUp?'rdb-svc':'폴백(parts.yaml)'}`;
+    renderCatalog();
+  }catch(e){ setHealth(false, "카탈로그 적재 실패"); }
+  loadStatus();
+}
+function setHealth(up,msg){
+  $("#health").innerHTML=`<span class="live ${up?'up':'down'}"></span><b>${esc(msg)}</b>`;
+}
+
+/* ---- 서비스 상태 스트립 (4계층 라이브) ---- */
+async function loadStatus(){
+  const row=$("#svcrow");
+  row.innerHTML=`<span class="dt" style="font-family:var(--mono);font-size:11px;color:var(--ink-soft)">서비스 상태 확인 중…</span>`;
+  try{
+    const s=await (await fetch("/api/status")).json();
+    row.innerHTML=s.services.map((svc,i)=>{
+      const ms=svc.up&&svc.ms?`<span class="ms">${svc.ms}ms</span>`:"";
+      const dt=svc.detail?`<span class="dt">${esc(svc.detail)}</span>`:(svc.up?"":`<span class="dt">다운</span>`);
+      const arr=i<s.services.length-1?`<span class="arr">→</span>`:"";
+      return `<span class="svc ${svc.up?'up':'down'}"><span class="d"></span>
+        <span class="nm">${esc(svc.name)}</span> ${dt} ${ms}</span>${arr}`;
+    }).join("");
+  }catch(e){ row.innerHTML=`<span class="svc down"><span class="d"></span><span class="nm">상태 조회 실패</span></span>`; }
+}
+
+/* ---- RDB 카탈로그 전시 (카테고리별) ---- */
+const CATALOG_ORDER=[];
+const CAT_GROUPS=[["CPU","CPU"],["Motherboard","메인보드"],["GPU","그래픽카드"],
+  ["PSU","파워"],["Case","케이스"],["RAM","메모리"]];
+function catCardOf(iri){ const p=BY[iri]; if(!p) return "";
+  return `<div class="pcard" data-iri="${esc(iri)}"><div class="name">${esc(p.name)}</div>
+    <div class="meta">${esc(specLine(p))}</div>
+    <div class="price">${won(p.price)} <small>★${p.rating}</small></div>
+    <div class="stk">재고 ${p.stock}개</div></div>`; }
+function renderCatalog(){
+  const body=$("#catbody"); let html="";
+  for(const [type,ko] of CAT_GROUPS){
+    const items=CATALOG_ORDER.filter(iri=>BY[iri].type===type);
+    if(!items.length) continue;
+    html+=`<div class="catgroup"><div class="gh">${ko} <span class="n">${items.length}</span></div>
+      <div class="catgrid">${items.map(catCardOf).join("")}</div></div>`;
+  }
+  body.innerHTML=html;
+}
+function highlightCatalog(iris){
+  document.querySelectorAll(".catgrid .pcard.hot").forEach(c=>{
+    c.classList.remove("hot"); const b=c.querySelector(".hotb"); if(b) b.remove();
+  });
+  const set=new Set(iris.map(local));
+  document.querySelectorAll(".catgrid .pcard").forEach(c=>{
+    const iri=local(c.getAttribute("data-iri"));
+    if(set.has(iri)){
+      c.classList.add("hot");
+      if(!c.querySelector(".hotb")) c.insertAdjacentHTML("beforeend",`<div class="hotb">추천됨 ✓</div>`);
+    }
+  });
+}
+
+/* ---- 부품 카드 ---- */
+function specLine(p){
+  const o=p.onto||{};
+  if(p.type==="CPU") return `소켓 ${o.hasSocket}`;
+  if(p.type==="Motherboard") return `${o.hasSocket} · ${o.supportsRAMType} · ${o.hasFormFactor}`;
+  if(p.type==="GPU") return `길이 ${o.lengthMm}mm · 권장 ${Number(o.recommendedWattage)+Number(o.powerMargin)}W`;
+  if(p.type==="PSU") return `${o.wattage}W`;
+  if(p.type==="Case") return `최대 GPU ${o.maxGpuLengthMm}mm · ${(o.supportsFormFactor||[]).join("/")}`;
+  if(p.type==="RAM") return o.hasRAMType;
+  return "";
+}
+function pcardOf(loc){ const p=BY[loc]; if(!p) return `<div class="pcard"><div class="name">${esc(loc)}</div></div>`;
+  return `<div class="pcard"><div class="name">${esc(p.name)}</div>
+    <div class="meta">${esc(specLine(p))}</div>
+    <div class="price">${won(p.price)} <small>★${p.rating}</small></div></div>`; }
+function tagOf(loc){ const p=BY[loc]; if(!p) return `<span class="tag">${esc(loc)}</span>`;
+  return `<span class="tag"><b>${esc(p.name)}</b> · ${won(p.price)}</span>`; }
+
+/* ============================================================
+   파이프라인 렌더 (실제 GB10 트레이스)
+   ============================================================ */
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function pipeReset(){ $("#pipe").innerHTML=""; }
+function addStep(id,n,label,badge,tag,bodyHtml){
+  const div=document.createElement("div");
+  div.className="step"; div.id=id;
+  div.innerHTML=`<div class="sh"><span class="sn">${n}</span><span class="sl">${esc(label)}</span>
+     <span class="badge ${badge}">${esc(tag)}</span></div>
+     <div class="sbody">${bodyHtml}</div>`;
+  $("#pipe").appendChild(div);
+  requestAnimationFrame(()=>div.classList.add("on"));
+  return div;
+}
+function argsLine(args){
+  const parts=Object.entries(args).map(([k,v])=>{
+    const val=(typeof v==="string"&&v.startsWith(PC))?`<span class="iri">${esc(shortIri(v))}</span>`:`<span class="v">${esc(String(v))}</span>`;
+    return `<span class="k">${esc(k)}=</span>${val}`;
+  });
+  return parts.join(" <span class='k'>·</span> ");
+}
+function traceBody(t){
+  const r=t.result||{};
+  if(t.tool==="resolve_entity"){
+    const v=r.iri?`<span class="iri">${esc(shortIri(r.iri))}</span>`:`<span class="no">미해결</span>`;
+    return `${argsLine(t.args)}<br><span class="k">→</span> ${v}`;
+  }
+  if(t.tool==="find_compatible"){
+    return `${argsLine(t.args)}<br><span class="rl">basis:</span> <span class="rl">${esc(r.basis||"?")}</span>
+      <span class="k">·</span> FILTER NOT EXISTS incompatibleWith<br>
+      <span class="k">→</span> <span class="v">${(r.results||[]).length}종</span> 매칭`;
+  }
+  if(t.tool==="check_compatibility"){
+    const rels=(r.relations||[]).map(x=>`<span class="rl">${esc(x)}</span>`).join(" / ")||"<span class='k'>없음</span>";
+    return `${argsLine(t.args)}<br><span class="k">relations:</span> ${rels}<br>
+      <span class="k">compatible:</span> <span class="${r.compatible?'ok':'no'}">${r.compatible}</span>
+      <span class="k">· explicit_incompat:</span> <span class="${r.explicitly_incompatible?'no':'ok'}">${r.explicitly_incompatible}</span>`;
+  }
+  if(t.tool==="build_configuration"){
+    return `${argsLine(t.args)}<br>
+      <span class="rl">규칙:</span> ${(r.basis||[]).map(b=>`<span class="rl">${esc(b)}</span>`).join(" + ")}<br>
+      <span class="k">→</span> 보드·케이스 <span class="v">${r.pair_count||0}쌍</span>
+      <span class="k">·</span> PSU <span class="v">${(r.psu_options||[]).length}종</span>`;
+  }
+  if(t.tool==="explain_fact"){
+    return `${argsLine(t.args)}<br><span class="k">holds:</span> <span class="${r.holds?'ok':'no'}">${r.holds}</span><br>
+      <span class="k">premises:</span> ${(r.premises||[]).map(p=>esc(p)).join("; ")||"—"}`;
+  }
+  if(t.tool==="get_product_info"){
+    const ps=r.products||[];
+    return `<span class="k">RDB 조회</span> (rdb-svc) <span class="k">→</span> <span class="v">${ps.length}건</span><br>
+      ${ps.map(p=>`<span class="k">·</span> ${esc(p.name)} <span class="v">${won(p.price_krw)}</span> <span class="k">· 재고 ${p.stock} · ★${p.rating}</span>`).join("<br>")||"—"}`;
+  }
+  return `${argsLine(t.args)}<br>${esc(JSON.stringify(r).slice(0,160))}`;
+}
+
+/* ============================================================
+   실행
+   ============================================================ */
+async function run(q){
+  $("#send").disabled=true; $("#q").value=q;
+  $("#pipemeta").textContent="GB10 호출 중…"; pipeReset();
+  addStep("st-llm","◆","GB10 의도해석 · 도구선택","b-llm","Qwen",
+    `<span class="pulse"></span> 질문을 분석하고 도구를 고르는 중…`);
+  $("#answer").innerHTML=`<div class="ans-head"><span class="qx">${esc(q)}</span></div>
+    <div class="nlcard"><span class="spin"></span>GB10이 추론 중…</div>`;
+
+  let data;
+  try{
+    const res=await fetch("/api/ask",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({q})});
+    data=await res.json();
+    if(!res.ok||!data.ok) throw new Error(data.error||("HTTP "+res.status));
+  }catch(e){
+    $("#st-llm .sbody").innerHTML=`<span class="no">호출 실패</span> — ${esc(e.message)}`;
+    $("#answer").innerHTML=`<div class="ans-head"><span class="qx">${esc(q)}</span>
+      <span class="verdict v-fail">오류</span></div>
+      <div class="empty">백엔드 호출에 실패했습니다: ${esc(e.message)}<br>GB10/Fuseki 연결을 확인하세요.</div>`;
+    $("#pipemeta").textContent="오류"; $("#send").disabled=false; return;
+  }
+
+  // 1) 의도해석 완료
+  const calls=(data.trace||[]).map(t=>t.tool);
+  $("#st-llm .sbody").innerHTML=`<span class="ok">완료</span> · GB10이 <span class="v">${data.tool_calls}</span>회 도구 호출
+    <span class="k">·</span> <span class="v">${data.llm_ms}ms</span>
+    <br><span class="k">체인:</span> ${calls.map(c=>`<span class="rl">${esc(c)}</span>`).join(" → ")||"—"}`;
+
+  // 2) 트레이스 단계별 렌더 (각 단계 = Fuseki 룰추론/RDB 왕복 + 소요시간)
+  let i=1;
+  for(const t of (data.trace||[])){
+    await sleep(240);
+    addStep("st-tr-"+i, String(i), t.tool, "b-det", `결정적 · ${t.ms}ms`, traceBody(t));
+    i++;
+  }
+
+  // 3) 종합
+  await sleep(240);
+  addStep("st-synth","✓","GB10 결과 종합","b-llm","Qwen",
+    `<span class="ok">완료</span> · 자연어 종합 발화
+     <br><span class="k">GB10</span> <span class="v">${data.llm_ms}ms</span>
+     <span class="k">· 도구(Fuseki+RDB)</span> <span class="v">${data.tool_ms}ms</span>
+     <span class="k">· 총</span> <span class="v">${data.elapsed_ms}ms</span>`);
+  $("#pipemeta").textContent=`완료 ✓ · ${data.turns}턴 · ${data.elapsed_ms}ms`
+    +(data.tokens?` · ${Number(data.tokens.total).toLocaleString("ko-KR")} tokens`:"");
+
+  renderAnswer(q, data);
+  $("#answer").insertAdjacentHTML("beforeend", renderLlmIo(data));
+  highlightCatalog(resultIris(primaryTool(data.trace||[])));
+  $("#send").disabled=false;
+}
+
+/* ---- 답변 + 결과 카드 (primary tool 기준) ---- */
+function primaryTool(trace){
+  for(let i=trace.length-1;i>=0;i--) if(trace[i].tool!=="resolve_entity") return trace[i];
+  return trace[trace.length-1]||null;
+}
+// 결과로 추천/관련된 부품 IRI 들 → 카탈로그 하이라이트용
+function resultIris(pt){
+  if(!pt) return [];
+  const r=pt.result||{}, a=pt.args||{};
+  if(pt.tool==="find_compatible") return r.results||[];
+  if(pt.tool==="check_compatibility") return [a.iri_a,a.iri_b].filter(Boolean);
+  if(pt.tool==="explain_fact") return [a.subject_iri,a.object_iri].filter(Boolean);
+  if(pt.tool==="resolve_entity") return r.iri?[r.iri]:[];
+  if(pt.tool==="get_product_info") return (r.products||[]).map(p=>p.iri);
+  if(pt.tool==="build_configuration"){
+    const out=[...(r.psu_options||[])];
+    (r.configurations||[]).forEach(c=>{ out.push(c.mb,c.case,...(c.cpu_options||[]),...(c.ram_options||[])); });
+    return out;
+  }
+  return [];
+}
+function renderAnswer(q, data){
+  const trace=data.trace||[];
+  const pt=primaryTool(trace);
+  let verdict="", body="", basisChips="";
+
+  if(pt){
+    const tool=pt.tool, r=pt.result||{};
+    if(tool==="check_compatibility"){
+      verdict = r.compatible?`<span class="verdict v-pass">호환 ✓</span>`
+              : r.explicitly_incompatible?`<span class="verdict v-fail">비호환 ✕</span>`
+              : `<span class="verdict v-info">관계 없음</span>`;
+      basisChips=(r.relations||[]).map(b=>`<span class="rule">${esc(b)}</span>`).join("")
+        +(r.explicitly_incompatible?`<span class="rule x">incompatibleWith</span>`:"");
+      body=`<div class="grid">${pcardOf(local(pt.args.iri_a))}${pcardOf(local(pt.args.iri_b))}</div>`;
+    } else if(tool==="explain_fact"){
+      verdict = r.holds?`<span class="verdict v-pass">성립 ✓</span>`:`<span class="verdict v-fail">미성립 ✕</span>`;
+      basisChips=`<span class="rule${r.holds?'':' x'}">${esc(pt.args.predicate)}</span>`;
+      body=`<div class="grid">${pcardOf(local(pt.args.subject_iri))}${pcardOf(local(pt.args.object_iri))}</div>
+        <div class="cfg" style="margin-top:13px"><div class="optrow"><span class="lab" style="width:auto">전제</span></div>
+        ${(r.premises||[]).map(p=>`<div class="tag" style="display:block;margin-top:8px">${esc(p)}</div>`).join("")||'<div class="empty">전제 없음</div>'}</div>`;
+    } else if(tool==="get_product_info"){
+      basisChips=`<span class="rule" style="color:var(--pass);background:var(--pass-soft)">RDB lookup</span>`;
+      const items=(r.products||[]).map(p=>local(p.iri));
+      body = items.length
+        ? `<div class="sech">상품 정보 <span class="n">${items.length}건</span></div><div class="grid">${items.map(pcardOf).join("")}</div>`
+        : `<div class="empty">카탈로그에서 해당 부품을 찾지 못했습니다.</div>`;
+    } else if(tool==="find_compatible"){
+      basisChips=`<span class="rule">${esc(r.basis)}</span>`;
+      const items=(r.results||[]).map(local);
+      body = items.length
+        ? `<div class="sech">호환 부품 <span class="n">${items.length}종</span></div><div class="grid">${items.map(pcardOf).join("")}</div>`
+        : `<div class="empty">카탈로그에 조건을 만족하는 부품이 없습니다.</div>`;
+    } else if(tool==="build_configuration"){
+      basisChips=(r.basis||[]).map(b=>`<span class="rule">${esc(b)}</span>`).join("");
+      const cfgs=r.configurations||[];
+      if(!cfgs.length){ body=`<div class="empty">조건을 만족하는 보드·케이스 조합이 없습니다.</div>`; }
+      else{
+        const byMb={};
+        cfgs.forEach(c=>{(byMb[c.mb]=byMb[c.mb]||[]).push(c)});
+        body=`<div class="sech">호환 구성 <span class="n">${r.pair_count}쌍</span></div><div class="grid">`;
+        Object.entries(byMb).forEach(([mb,cs])=>{
+          const cases=cs.map(c=>nameOf(local(c.case))).join(", ");
+          const cpu=cs[0].cpu_options.map(local), ram=cs[0].ram_options.map(local);
+          body+=`<div class="cfg">
+            <div class="pair"><span class="b">${esc(nameOf(local(mb)))}</span>
+              <span class="plus">+ 케이스</span> <span class="tag">${esc(cases)}</span></div>
+            <div class="opts">
+              <div class="optrow"><span class="lab">CPU</span><span class="tagwrap">${cpu.map(tagOf).join("")}</span></div>
+              <div class="optrow"><span class="lab">RAM</span><span class="tagwrap">${ram.map(tagOf).join("")}</span></div>
+            </div></div>`;
+        });
+        body+=`</div>`;
+        const psu=(r.psu_options||[]).map(local);
+        body+=`<div class="sech">호환 파워 <span class="n">${psu.length}종</span></div>
+          <div class="grid">${psu.map(pcardOf).join("")||'<div class="empty">전력을 감당할 PSU가 없습니다.</div>'}</div>`;
+      }
+    }
+  }
+
+  $("#answer").innerHTML=`
+    <div class="ans-head"><span class="qx">${esc(q)}</span>${verdict}</div>
+    ${renderTokens(data)}
+    ${renderCost(data)}
+    <div class="nlcard">${esc(data.answer||"").replace(/\n/g,"<br>")}
+      ${basisChips?`<div class="basisline">${basisChips}</div>`:""}
+      <div class="src">근거: 온톨로지 추론 basis (Fuseki/Jena) · 표시명/가격: RDB · 종합: ${esc(data.engine||"GB10")}</div>
+    </div>${body}`;
+}
+
+/* ---- 토큰 사용량 카드 (시연: 질의당 입력·출력 토큰) ---- */
+function renderTokens(data){
+  const tk=data.tokens; if(!tk) return "";
+  const fmt=n=>Number(n||0).toLocaleString("ko-KR");
+  const rows=(tk.turns||[]).map(t=>
+    `<tr><td>턴 ${t.turn}</td><td>${fmt(t.prompt)}</td><td>${fmt(t.completion)}</td><td>${fmt(t.total)}</td></tr>`).join("");
+  const nturn=(tk.turns||[]).length;
+  return `<div class="tokcard">
+    <div class="tokhead"><span class="tk">TOKENS</span>질문 한 줄이 답이 되기까지</div>
+    <div class="tokrow">
+      <div class="tokbox in"><div class="tlab">입력 · 내 질문</div><div class="tnum">${fmt(tk.input)}</div></div>
+      <div class="tokop">+</div>
+      <div class="tokbox out"><div class="tlab">출력 · 답을 내기까지 소모</div><div class="tnum">${fmt(tk.output)}</div></div>
+      <div class="tokop">=</div>
+      <div class="tokbox tot"><div class="tlab">총 토큰</div><div class="tnum">${fmt(tk.total)}</div></div>
+    </div>
+    <div class="toknote">내가 친 질문은 단 <b>${fmt(tk.input)}토큰</b>(한 줄)이지만 —
+      시스템 프롬프트 · 도구 정의 · ${nturn}턴 컨텍스트 재전송 · 도구 결과 · 생성을 모두 거쳐
+      답을 내기까지 총 <b>${fmt(tk.total)}토큰</b>이 소모됩니다.</div>
+    <table class="toktable">
+      <tr><th>턴</th><th>프롬프트(재전송)</th><th>생성</th><th>합계</th></tr>
+      ${rows}
+      <tr><td>합계</td><td>${fmt(tk.raw_prompt)}</td><td>${fmt(tk.raw_completion)}</td><td>${fmt(tk.total)}</td></tr>
+    </table>
+  </div>`;
+}
+
+/* ---- 토큰 → 비용 환산 (Claude / GPT 공개 단가 기준) ---- */
+function renderCost(data){
+  const tk=data.tokens; if(!tk) return "";
+  // 실제 과금 기준: 프롬프트 누계=입력가, 생성 누계=출력가 (출력이 4~5배 비쌈)
+  const pin=tk.raw_prompt||0, pout=tk.raw_completion||0;
+  const fmt=n=>Number(n||0).toLocaleString("ko-KR");
+  const usd=v=>"$"+v.toFixed(v<0.01?5:4);
+  const krw=v=>Math.round(v*FX_KRW).toLocaleString("ko-KR")+"원";
+  const rows=PRICING.map(m=>{
+    const cost=pin/1e6*m.inp + pout/1e6*m.out;
+    const vcls=m.vendor==="Claude"?"vd-c":"vd-g";
+    return `<tr>
+      <td><span class="vd ${vcls}">${esc(m.vendor)}</span> ${esc(m.label)}</td>
+      <td>$${m.inp.toFixed(2)}</td><td>$${m.out.toFixed(2)}</td>
+      <td class="cst">${usd(cost)}</td><td class="cst">${krw(cost)}</td></tr>`;
+  }).join("");
+  return `<div class="tokcard">
+    <div class="tokhead"><span class="tk" style="background:var(--warn)">COST</span>이 질의를 상용 API로 돌렸다면</div>
+    <table class="toktable costtable">
+      <tr><th>모델</th><th>입력 $/1M</th><th>출력 $/1M</th><th>이 질의</th><th>≈ KRW</th></tr>
+      ${rows}
+    </table>
+    <div class="toknote">과금 기준 입력 <b>${fmt(pin)}</b>토큰(프롬프트 누계) · 출력 <b>${fmt(pout)}</b>토큰(생성 누계).
+      공개 단가 기준(캐시·배치 할인 미적용) · 환율 ${fmt(FX_KRW)}원/$ — 단가·환율은 코드 상단 <span class="kbd">PRICING</span>에서 수정.</div>
+  </div>`;
+}
+
+/* ---- GB10 원문 (LLM 요청·응답) ---- */
+function renderLlmIo(data){
+  const io=data.llm_io||[]; if(!io.length) return "";
+  const ep=io[0].endpoint||"";
+  let inner="";
+  for(const t of io){
+    inner+=`<div class="llmturn">
+      <div class="tt">턴 ${t.turn} · POST ${esc(ep)}chat/completions · model=${esc(t.request.model)} · tool_choice=${esc(t.request.tool_choice)}</div>
+      <div class="llmtools">tools(${t.request.tools.length}): ${t.request.tools.map(esc).join(", ")}</div>`;
+    for(const m of (t.request.messages||[])){
+      let v;
+      if(m.tool_calls&&m.tool_calls.length){
+        v=m.tool_calls.map(c=>`<span class="tc">${esc(c.name)}(${esc(typeof c.arguments==="string"?c.arguments:JSON.stringify(c.arguments))})</span>`).join("  ");
+      }else if(m.role==="tool"){
+        v=`<span class="k">tool_result →</span> ${esc(trunc(m.content,260))}`;
+      }else{
+        v=esc(trunc(m.content||"", m.role==="system"?1100:420));
+      }
+      inner+=`<div class="msg"><span class="rb rb-${esc(m.role)}">${esc(m.role)}</span>${v}</div>`;
+    }
+    const r=t.response||{};
+    const calls=(r.tool_calls||[]).map(c=>`<span class="tc">${esc(c.name)}(${esc(JSON.stringify(c.arguments))})</span>`).join("  ")||"<span class='k'>없음</span>";
+    const u=r.usage?`tokens ${r.usage.prompt_tokens}p / ${r.usage.completion_tokens}c / ${r.usage.total_tokens}t`:"";
+    inner+=`<div class="llmresp"><span class="k">← GB10 응답</span> finish=<span class="ok">${esc(r.finish_reason)}</span> · tool_calls: ${calls}`;
+    if(r.content) inner+=`<br><span class="k">content:</span> ${esc(trunc(r.content,420))}`;
+    if(u) inner+=`<br><span class="k">${esc(u)}</span>`;
+    inner+=`</div></div>`;
+  }
+  return `<details class="rawllm"><summary>GB10 원문 보기 — LLM 요청·응답<span class="ep">${io.length}턴 · ${esc(ep)} → GB10</span></summary><div class="body">${inner}</div></details>`;
+}
+
+/* ---- 예시 + 와이어링 ---- */
+const EXAMPLES=[
+  {label:`<b>RTX 4080</b> 가격 얼마야?`, q:"RTX 4080 가격 얼마야?"},
+  {label:`<b>RTX 4080</b>으로 PC 견적 짜줘`, q:"RTX 4080으로 PC 견적 짜줘"},
+  {label:`<b>7700X</b>에 맞는 메인보드`, q:"7700X에 맞는 메인보드 찾아줘"},
+  {label:`<b>i5-14600K</b> + B760 DDR4 호환?`, q:"i5-14600K랑 B760 DDR4 보드 호환돼?"},
+  {label:`<b>4080</b>이 들어가는 케이스`, q:"RTX 4080이 들어가는 케이스 알려줘"},
+];
+$("#chips").innerHTML=EXAMPLES.map(e=>`<span class="chip" data-q="${e.q.replace(/"/g,'&quot;')}">${e.label}</span>`).join("");
+document.querySelectorAll(".chip").forEach(c=>c.onclick=()=>run(c.dataset.q));
+$("#send").onclick=()=>{ const v=$("#q").value.trim(); if(v) run(v); };
+$("#q").addEventListener("keydown",e=>{ if(e.key==="Enter"){ const v=$("#q").value.trim(); if(v) run(v);} });
+
+boot();
+</script>
+</body>
+</html>
