@@ -207,6 +207,10 @@
   .svc .dt{font-family:var(--mono);font-size:11px;color:var(--ink-soft)}
   .svc .ms{font-family:var(--mono);font-size:11px;color:var(--accent)}
   .svcrow .arr{color:#C3CBD6;font-size:15px}
+  .svcrow .callto{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);
+    white-space:nowrap;padding:0 4px}
+  .svcgroup{display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+    border:1px dashed var(--line);border-radius:11px;padding:6px}
 
   /* ---- RDB 카탈로그 ---- */
   .cat{padding:6px 0 54px;border-top:1px solid var(--line);margin-top:8px}
@@ -382,13 +386,18 @@ async function loadStatus(){
   row.innerHTML=`<span class="dt" style="font-family:var(--mono);font-size:11px;color:var(--ink-soft)">서비스 상태 확인 중…</span>`;
   try{
     const s=await (await fetch("/api/status")).json();
-    row.innerHTML=s.services.map((svc,i)=>{
+    const chip=svc=>{
       const ms=svc.up&&svc.ms?`<span class="ms">${svc.ms}ms</span>`:"";
       const dt=svc.detail?`<span class="dt">${esc(svc.detail)}</span>`:(svc.up?"":`<span class="dt">다운</span>`);
-      const arr=i<s.services.length-1?`<span class="arr">→</span>`:"";
       return `<span class="svc ${svc.up?'up':'down'}"><span class="d"></span>
-        <span class="nm">${esc(svc.name)}</span> ${dt} ${ms}</span>${arr}`;
-    }).join("");
+        <span class="nm">${esc(svc.name)}</span> ${dt} ${ms}</span>`;
+    };
+    // web 이 허브(오케스트레이터) — 질의마다 GB10·Fuseki·RDB 를 호출(선형 체인 아님)
+    const web=s.services.find(x=>x.name==="web");
+    const backs=s.services.filter(x=>x!==web);
+    row.innerHTML=(web?chip(web):"")
+      +`<span class="callto">질의마다 호출 →</span>`
+      +`<span class="svcgroup">${backs.map(chip).join("")}</span>`;
   }catch(e){ row.innerHTML=`<span class="svc down"><span class="d"></span><span class="nm">상태 조회 실패</span></span>`; }
 }
 
@@ -663,7 +672,8 @@ function renderTokens(data){
     </div>
     <div class="toknote">내가 친 질문은 단 <b>${fmt(tk.input)}토큰</b>(한 줄)이지만 —
       시스템 프롬프트 · 도구 정의 · ${nturn}턴 컨텍스트 재전송 · 도구 결과 · 생성을 모두 거쳐
-      답을 내기까지 총 <b>${fmt(tk.total)}토큰</b>이 소모됩니다.</div>
+      답을 내기까지 총 <b>${fmt(tk.total)}토큰</b>이 소모됩니다.
+      <br>※ 표시값은 <b>전송량(raw)</b>입니다 — 반복되는 프리픽스(시스템·도구·이전 턴)는 prefix 캐시로 재사용되어 실제 연산·과금은 이보다 낮습니다.</div>
     <table class="toktable">
       <tr><th>턴</th><th>프롬프트(재전송)</th><th>생성</th><th>합계</th></tr>
       ${rows}
@@ -695,7 +705,8 @@ function renderCost(data){
       ${rows}
     </table>
     <div class="toknote">과금 기준 입력 <b>${fmt(pin)}</b>토큰(프롬프트 누계) · 출력 <b>${fmt(pout)}</b>토큰(생성 누계).
-      공개 단가 기준(캐시·배치 할인 미적용) · 환율 ${fmt(FX_KRW)}원/$ — 단가·환율은 코드 상단 <span class="kbd">PRICING</span>에서 수정.</div>
+      공개 단가 기준 · 환율 ${fmt(FX_KRW)}원/$ — 단가·환율은 코드 상단 <span class="kbd">PRICING</span>에서 수정.
+      <br>※ 여기 비용은 <b>캐시 미적용 상한</b>입니다 — 반복 프리픽스가 prefix 캐시로 재사용되면(입력 ≈×0.1) 실제 과금은 더 낮습니다.</div>
   </div>`;
 }
 
@@ -736,7 +747,7 @@ const EXAMPLES=[
   {label:`<b>RTX 4080</b>으로 PC 견적 짜줘`, q:"RTX 4080으로 PC 견적 짜줘"},
   {label:`<b>7700X</b>에 맞는 메인보드`, q:"7700X에 맞는 메인보드 찾아줘"},
   {label:`<b>i5-14600K</b> + B760 DDR4 호환?`, q:"i5-14600K랑 B760 DDR4 보드 호환돼?"},
-  {label:`<b>4080</b>이 들어가는 케이스`, q:"RTX 4080이 들어가는 케이스 알려줘"},
+  {label:`<b>4080</b>이 들어가는 케이스`, q:"4080이 들어가는 케이스 알려줘"},
 ];
 $("#chips").innerHTML=EXAMPLES.map(e=>`<span class="chip" data-q="${e.q.replace(/"/g,'&quot;')}">${e.label}</span>`).join("");
 document.querySelectorAll(".chip").forEach(c=>c.onclick=()=>run(c.dataset.q));
